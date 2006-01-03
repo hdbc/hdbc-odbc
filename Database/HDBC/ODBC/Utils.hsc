@@ -29,7 +29,15 @@ import Foreign.Marshal.Array
 import Foreign.Marshal.Alloc
 import Data.Word
 
-#include "hdbc-postgresql-helper.h"
+#include "hdbc-odbc-helper.h"
+
+checkError :: String -> Env -> #{type SQLRETURN} -> IO ()
+checkError msg o res =
+    withEnv o $ \p ->
+        do rc <- sqlSucceeded res
+           if rc == 0
+               then throwDyn
+               else return ()
 
 raiseError :: String -> Word32 -> (Ptr CConn) -> IO a
 raiseError msg code cconn =

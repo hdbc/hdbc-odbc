@@ -1,7 +1,15 @@
-#include <libpq-fe.h>
+#include <sql.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "hdbc-postgresql-helper.h"
+#include "hdbc-odbc-helper.h"
+
+int sqlSucceeded(SQLRETURN ret) {
+  return SQL_SUCCEEDED(ret);
+}
+
+SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl) {
+  return SQLFreeHandle(SQL_HANDLE_ENV, hdl);
+}
 
 /* Things can't finalize more than once.  
 We'd like to let people call them from the app.

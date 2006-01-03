@@ -1,5 +1,5 @@
 -- -*- mode: haskell; -*-
-{-# CFILES hdbc-postgresql-helper.c #-}
+{-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
 {-
 Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
@@ -19,31 +19,62 @@ Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
 
-module Database.HDBC.PostgreSQL.Connection (connectPostgreSQL) where
+module Database.HDBC.ODBC.Connection (connectODBC) where
 
 import Database.HDBC.Types
 import Database.HDBC
-import Database.HDBC.PostgreSQL.Types
-import Database.HDBC.PostgreSQL.Statement
+import Database.HDBC.ODBC.Types
+import Database.HDBC.ODBC.Statement
 import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal
 import Foreign.Storable
-import Database.HDBC.PostgreSQL.Utils
+import Database.HDBC.ODBC.Utils
 import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
 
-#include <libpq-fe.h>
-#include <pg_config.h>
+#include <sql.h>
 
-{- | Connect to a PostgreSQL server.
+{- | Connect to an ODBC server.
 
 See <http://www.postgresql.org/docs/8.1/static/libpq.html#LIBPQ-CONNECT> for the meaning
 of the connection string. -}
-connectPostgreSQL :: String -> IO Connection
-connectPostgreSQL args = withCString args $
-  \cs -> do ptr <- pqconnectdb cs
+connectODBC :: String -> IO Connection
+connectODBC args = withCString args $ \cs -> 
+                   alloca $ \(penvptr::Ptr SqlHandle) ->
+                   alloca $ \(pdbcptr::Ptr CConn) ->
+         do -- Create the Environment Handle
+            rc1 <- sqlAllocHandle #{const SQL_HANDLE_ENV}
+                                  #{const SQL_NULL_HANDLE}
+                                   penvptr
+            envptr <- peek penvptr
+            fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr envptr
+            checkError "connectODBC/alloc env" fenvptr rc1
+            sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
+                          #{const SQL_OV_ODBC3} 0
+                          
+            -- Create the DBC handle.
+            sqlAllocHandle #{const SQL_HANDLE_DBC} env pdbcptr 
+                           >>= checkError "connectODBC/alloc dbc" fenvptr
+            dbcptr <- peek pdbcptr
+            wrappeddbcptr <- wrapconn dbcptr
+            fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
+
+            
+                           
+
+            
+                           >>= checkError "connectODBC/allocEnv"
+            fenvptr <- newForeignPtr envptr
+            sqlAllocHandle #{const SQL_HANDLE_DBC}
+                           envptr
+                           dbcptr
+            fdbcptr <- newForeignPtr dbcptr
+            sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
+                          #{const SQL_OV_ODBC3} 0
+            -}
+            ptr <- pqconnectdb cs
             status <- pqstatus ptr
             wrappedptr <- wrapconn ptr
             fptr <- newForeignPtr pqfinishptr wrappedptr
@@ -100,6 +131,10 @@ fgetTables conn =
        return $ seq (length res) res
 
 fdisconnect conn = withRawConn conn $ pqfinish
+
+foreign import ccall unsafe "sql.h SQLAllocHandle"
+  sqlAllocHandle :: #{type SQLSMALLINT} -> SqlHandle -> 
+                    Ptr SqlHandle -> IO (#{type SQLRETURN})
 
 foreign import ccall unsafe "libpq-fe.h PQconnectdb"
   pqconnectdb :: CString -> IO (Ptr CConn)

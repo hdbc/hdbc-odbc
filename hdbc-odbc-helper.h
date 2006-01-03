@@ -1,5 +1,8 @@
 #include <libpq-fe.h>
 
+extern int sqlSucceeded(SQLRETURN ret);
+extern SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl);
+
 typedef struct TAG_finalizeonce {
   void *encapobj;
   int isfinalized;
