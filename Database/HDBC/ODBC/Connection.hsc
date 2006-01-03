@@ -36,12 +36,15 @@ import Data.Word
 
 #include <sql.h>
 
+data ConnInfo = ConnInfo {conn :: Conn,
+                          env :: Env}
+
 {- | Connect to an ODBC server.
 
 See <http://www.postgresql.org/docs/8.1/static/libpq.html#LIBPQ-CONNECT> for the meaning
 of the connection string. -}
 connectODBC :: String -> IO Connection
-connectODBC args = withCString args $ \cs -> 
+connectODBC args = withCStringLen args $ \(cs, cslen) -> 
                    alloca $ \(penvptr::Ptr SqlHandle) ->
                    alloca $ \(pdbcptr::Ptr CConn) ->
          do -- Create the Environment Handle
@@ -61,55 +64,41 @@ connectODBC args = withCString args $ \cs ->
             wrappeddbcptr <- wrapconn dbcptr
             fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
 
-            
-                           
-
-            
-                           >>= checkError "connectODBC/allocEnv"
-            fenvptr <- newForeignPtr envptr
-            sqlAllocHandle #{const SQL_HANDLE_DBC}
-                           envptr
-                           dbcptr
-            fdbcptr <- newForeignPtr dbcptr
-            sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
-                          #{const SQL_OV_ODBC3} 0
-            -}
-            ptr <- pqconnectdb cs
-            status <- pqstatus ptr
-            wrappedptr <- wrapconn ptr
-            fptr <- newForeignPtr pqfinishptr wrappedptr
-            case status of
-                     #{const CONNECTION_OK} -> mkConn args fptr
-                     _ -> raiseError "connectPostgreSQL" status ptr
+            -- Now connect.
+            sqlDriverConnect dbcptr nullPtr cs cslen nullPtr 0 nullPtr
+                             #{const SQL_DRIVER_COMPLETE}
+                              >>= checkError "connectODBC/sqlDriverConnect" fenvptr
+            mkConn args fenvptr fdbcptr
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Conn -> IO Connection
-mkConn args conn = withConn conn $
+mkConn :: String -> Env -> Conn -> IO Connection
+mkConn args ienv iconn = withConn iconn $
   \cconn -> 
     do begin_transaction conn
-       protover <- pqprotocolVersion cconn
-       serverver <- pqserverVersion cconn
-       let clientver = #{const_str PG_VERSION}
+       let protover = "FIXME"
+       let serverver = "FIXME"
+       let clientver = "FIXME"
+       let conninfo = ConnInfo {conn = iconn, env = ienv}
        return $ Connection {
-                            disconnect = fdisconnect conn,
-                            commit = fcommit conn,
-                            rollback = frollback conn,
-                            run = frun conn,
-                            prepare = newSth conn,
-                            clone = connectPostgreSQL args,
-                            hdbcDriverName = "postgresql",
+                            disconnect = fdisconnect iconn,
+                            commit = fcommit iconn,
+                            rollback = frollback iconn,
+                            run = frun iconn,
+                            prepare = newSth iconn,
+                            -- FIXME: add clone
+                            hdbcDriverName = "odbc",
                             hdbcClientVer = clientver,
-                            proxiedClientName = "postgresql",
+                            proxiedClientName = "FIXME",
                             proxiedClientVer = show protover,
                             dbServerVer = show serverver,
-                            getTables = fgetTables conn}
+                            getTables = fgetTables iconn}
 
 --------------------------------------------------
 -- Guts here
 --------------------------------------------------
 
-begin_transaction :: Conn -> IO ()
+begin_transaction :: ConnInfo -> IO ()
 begin_transaction o = frun o "BEGIN" [] >> return ()
 
 frun o query args =
@@ -122,13 +111,6 @@ fcommit o = do frun o "COMMIT" []
                begin_transaction o
 frollback o =  do frun o "ROLLBACK" []
                   begin_transaction o
-
-fgetTables conn =
-    do sth <- newSth conn "select table_name from information_schema.tables where table_schema = 'public'"
-       execute sth []
-       res1 <- fetchAllRows sth
-       let res = map fromSql $ concat res1
-       return $ seq (length res) res
 
 fdisconnect conn = withRawConn conn $ pqfinish
 
