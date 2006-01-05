@@ -52,14 +52,15 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                                   #{const SQL_NULL_HANDLE}
                                    penvptr
             envptr <- peek penvptr
-            fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr envptr
+            wrappedenvptr <- wrappenv envptr
+            fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr wrappedenvptr
             checkError "connectODBC/alloc env" fenvptr rc1
             sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
-                          #{const SQL_OV_ODBC3} 0
-                          
+                              #{const SQL_OV_ODBC3} 0
+
             -- Create the DBC handle.
-            sqlAllocHandle #{const SQL_HANDLE_DBC} env pdbcptr 
-                           >>= checkError "connectODBC/alloc dbc" fenvptr
+            sqlAllocHandle #{const SQL_HANDLE_DBC} envptr pdbcptr 
+                          >>= checkError "connectODBC/alloc dbc" fenvptr
             dbcptr <- peek pdbcptr
             wrappeddbcptr <- wrapconn dbcptr
             fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
@@ -112,29 +113,31 @@ fcommit o = do frun o "COMMIT" []
 frollback o =  do frun o "ROLLBACK" []
                   begin_transaction o
 
-fdisconnect conn = withRawConn conn $ pqfinish
+fdisconnect conninfo  = withRawConn (conn conninfo) $ \rawconn -> 
+   sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (env conninfo)
 
 foreign import ccall unsafe "sql.h SQLAllocHandle"
   sqlAllocHandle :: #{type SQLSMALLINT} -> SqlHandle -> 
                     Ptr SqlHandle -> IO (#{type SQLRETURN})
 
-foreign import ccall unsafe "libpq-fe.h PQconnectdb"
-  pqconnectdb :: CString -> IO (Ptr CConn)
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
+  wrapenv :: Ptr CEnv -> IO (Ptr WrappedCEnv)
 
-foreign import ccall unsafe "hdbc-postgresql-helper.h wrapobj"
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
+  wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
+
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleEnv_fptr"
+  sqlFreeHandleEnv_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
+
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_fptr"
+  sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
+
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
+  sqlFreeHandleDbc_app :: Ptr WrappedCEnv -> IO (#{type SQLRETURN})
+
+
   wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
 
 foreign import ccall unsafe "libpq-fe.h PQstatus"
   pqstatus :: Ptr CConn -> IO #{type ConnStatusType}
 
-foreign import ccall unsafe "hdbc-postgresql-helper.h PQfinish_app"
-  pqfinish :: Ptr WrappedCConn -> IO ()
-
-foreign import ccall unsafe "hdbc-postgresql-helper.h &PQfinish_finalizer"
-  pqfinishptr :: FunPtr (Ptr WrappedCConn -> IO ())
-
-foreign import ccall unsafe "libpq-fe.h PQprotocolVersion"
-  pqprotocolVersion :: Ptr CConn -> IO CInt
-
-foreign import ccall unsafe "libpq-fe.h PQserverVersion"
-  pqserverVersion :: Ptr CConn -> IO CInt

@@ -11,6 +11,7 @@ SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl) {
   return SQLFreeHandle(SQL_HANDLE_ENV, hdl);
 }
 
+
 /* Things can't finalize more than once.  
 We'd like to let people call them from the app.
 Yet we'd also like to be able to have a ForeignPtr finalize them.
