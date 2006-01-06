@@ -2,7 +2,7 @@
 {-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
 {-
-Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
+Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -35,9 +35,6 @@ import Foreign.Ptr
 import Data.Word
 
 #include <sql.h>
-
-data ConnInfo = ConnInfo {conn :: Conn,
-                          env :: Env}
 
 {- | Connect to an ODBC server.
 

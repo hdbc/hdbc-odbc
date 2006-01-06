@@ -1,8 +1,8 @@
 -- -*- mode: haskell; -*-
-{-# CFILES hdbc-postgresql-helper.c #-}
+{-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
 {-
-Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
+Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -18,11 +18,11 @@ Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
     License along with this library; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
-module Database.HDBC.PostgreSQL.Statement where
+module Database.HDBC.ODBC.Statement where
 import Database.HDBC.Types
 import Database.HDBC
-import Database.HDBC.PostgreSQL.Types
-import Database.HDBC.PostgreSQL.Utils
+import Database.HDBC.ODBC.Types
+import Database.HDBC.ODBC.Utils
 import Foreign.C.Types
 import Foreign.ForeignPtr
 import Foreign.Ptr
@@ -40,12 +40,12 @@ import Database.HDBC.PostgreSQL.Parser(convertSQL)
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
 
-#include <libpq-fe.h>
+#include <sql.h>
 
 data SState = 
     SState { stomv :: MVar (Maybe Stmt),
              nextrowmv :: MVar (CInt), -- -1 for no next row (empty); otherwise, next row to read.
-             dbo :: Conn,
+             dbo :: ConnInfo,
              squery :: String,
              colnamemv :: MVar [String]}
 
@@ -57,15 +57,8 @@ newSth indbo query =
        newstomv <- newMVar Nothing
        newnextrowmv <- newMVar (-1)
        newcolnamemv <- newMVar []
-       usequery <- case convertSQL query of
-                      Left errstr -> throwDyn $ SqlError
-                                      {seState = "",
-                                       seNativeError = (-1),
-                                       seErrorMsg = "hdbc prepare: " ++ 
-                                                    show errstr}
-                      Right converted -> return converted
        let sstate = SState {stomv = newstomv, nextrowmv = newnextrowmv,
-                            dbo = indbo, squery = usequery,
+                            dbo = indbo, squery = query,
                             colnamemv = newcolnamemv}
        return $ Statement {execute = fexecute sstate,
                            executeMany = fexecutemany sstate,
@@ -76,11 +69,12 @@ newSth indbo query =
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
-fexecute sstate args = withConn (dbo sstate) $ \cconn ->
+fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                        withCString (squery sstate) $ \cquery ->
                        withCStringArr0 args $ \cargs ->
     do l "in fexecute"
        public_ffinish sstate    -- Sets nextrowmv to -1
+       resptr <- 
        resptr <- pqexecParams cconn cquery
                  (genericLength args) nullPtr cargs nullPtr nullPtr 0
        status <- pqresultStatus resptr
