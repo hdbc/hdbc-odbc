@@ -36,6 +36,7 @@ import Data.Word
 import Data.Int
 import Control.Exception
 import System.IO
+import Data.Maybe
 
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
@@ -100,21 +101,26 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                  return rowcount
          colcount -> do fgetcolnames sthptr >>= swapMVar (colnamemv sstate)
                         swapMVar (nextrowmv sstate) 0
-                        swapMVar (stomv sstate) (Just fresptr)
+                        swapMVar (stomv sstate) (Just fsthptr)
                         touchForeignPtr fsthptr
                         return 0
 
-bindCol sthptr arg icol = withForeignPtr carg $ \arg ->
-                           alloca $ \pdtype ->
+getNumResultCols sthptr = alloca $ \pcount ->
+    do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" sthptr
+       peek pcount
+    
+
+bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
     do cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizerFree)
--- start here
-       sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype nullPtr nullPtr 
+       sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype pcolsize pdecdigits
                       nullPtr >>= checkError "bindcol/describe" sthptr
        coltype <- peek pdtype
+       colsize <- peek pcolsize
+       decdigits <- peek pdecdigits
        case arg of
-         SqlNull -> do sqlBindParamenter sthptr icol #{const SQL_PARAM_INPUT}
+         SqlNull -> do sqlBindParameter sthptr icol #{const SQL_PARAM_INPUT}
                           #{const SQL_CHAR} coltype colsize decdigits
                           nullPtr 0 #{const SQL_NULL_DATA} >>=
                           checkError ("bindparameter " ++ show icol) 
@@ -130,6 +136,9 @@ bindCol sthptr arg icol = withForeignPtr carg $ \arg ->
                        >>= checkError ("bindparameter " ++ show icol) sthptr
                      return (Just (fcsptr, fcslenptr))
        
+getSqlRowCount cstmt = alloca $ \prows ->
+     do sqlRowCount cstmt prows >>= checkError "SQLRowCount" cstmt
+        peek prows
 
 {- General algorithm: find out how many columns we have, check the type
 of each to see if it's NULL.  If it's not, fetch it as text and return that.
@@ -155,8 +164,11 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                                res <- mapM (getCol cstmt ) 
                                       [0..(ncols - 1)]
                                return (stmt, (nextrow + 1, Just res))
-          getCol cstmt icol = 
-             do size <- getColSize cstmt icol
+          getCol cstmt icol = alloca $ \psize ->
+             do sqlDescribeCol cstmt icol nullPtr 0 nullPtr nullPtr
+                               psize nullPtr nullPtr
+                               >>= checkError "sqlDescribeCol" cstmt
+                size <- peek psize
                 let bufsize = size + 127 -- Try to give extra space
                 alloca $ \plen -> 
                  allocaBytes (bufsize + 1) $ \cs ->
@@ -235,3 +247,24 @@ foreign import ccall unsafe "sql.h SQLExecute"
 foreign import ccall unsafe "sql.h SQLAllocHandle"
   sqlAllocStmtHandle :: #{type SQLSMALLINT} -> Ptr CConn ->
                         Ptr (Ptr CStmt) -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLNumResultCols"
+  sqlNumResultCols :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
+                   -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLRowCount"
+  sqlRowCount :: Ptr CStmt -> Ptr #{type SQLINTEGER} -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLBindParameter"
+  sqlBindParameter :: Ptr CStmt -- ^ Statement handle
+                   -> #{type SQLUSMALLINT} -- ^ Parameter Number
+                   -> #{type SQLSMALLINT} -- ^ Input or output
+                   -> #{type SQLSMALLINT} -- ^ Value type
+                   -> #{type SQLSMALLINT} -- ^ Parameter type
+                   -> #{type SQLUINTEGER} -- ^ column size
+                   -> #{type SQLSMALLINT} -- ^ decimal digits
+                   -> CString   -- ^ Parameter value pointer
+                   -> #{type SQLINTEGER} -- ^ buffer length
+                   -> Ptr #{type SQLINTEGER} -- ^ strlen_or_indptr
+                   -> IO #{type SQLRETURN}
+
