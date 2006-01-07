@@ -70,53 +70,38 @@ newSth indbo query =
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
 fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
-                       withCString (squery sstate) $ \cquery ->
-                       withCStringArr0 args $ \cargs ->
+                       withCStringLen (squery sstate) $ \(cquery, cqlen) ->
+                       mapM withCS args $ \cargs -> 
+                       alloca $ \(psthptr::Ptr CStmt) ->
     do l "in fexecute"
        public_ffinish sstate    -- Sets nextrowmv to -1
-       resptr <- 
-       resptr <- pqexecParams cconn cquery
-                 (genericLength args) nullPtr cargs nullPtr nullPtr 0
-       status <- pqresultStatus resptr
-       case status of
-         #{const PGRES_EMPTY_QUERY} ->
-             do l $ "PGRES_EMPTY_QUERY: " ++ squery sstate
-                pqclear_raw resptr
-                swapMVar (colnamemv sstate) []
-                return 0
-         #{const PGRES_COMMAND_OK} ->
-             do l $ "PGRES_COMMAND_OK: " ++ squery sstate
-                rowscs <- pqcmdTuples resptr
-                rows <- peekCString rowscs
-                pqclear_raw resptr
-                swapMVar (colnamemv sstate) []
-                return $ case rows of
-                                   "" -> 0
-                                   x -> read x
-         #{const PGRES_TUPLES_OK} -> 
-             do l $ "PGRES_TUPLES_OK: " ++ squery sstate
-                fgetcolnames resptr >>= swapMVar (colnamemv sstate) 
-                numrows <- pqntuples resptr
-                if numrows < 1
-                   then do pqclear_raw resptr
-                           return 0
-                   else do 
-                        wrappedptr <- wrapstmt resptr
-                        fresptr <- newForeignPtr pqclearptr wrappedptr
+       rc1 >= sqlAllocHandle #{const SQL_HANDLE_STMT} cconn psthptr
+       sthptr <- peek psthptr
+       wrappedsthptr <- wrappsth sthptr
+       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
+       checkError "execute allocHandle" (env sstate) rc1
+
+       sqlPrepare sthptr cquery cqlen >>= 
+            checkError "execute prepare" (env sstate)
+
+       zipWithM_ (bindCol sthptr) cargs [1..]
+
+       sqlExecute sthptr >>=
+            checkError "execute execute" (env sstate) rc1
+       rc <- getNumResultCols sthptr
+       
+       case rc of
+         0 -> do sqlFreeHandleSth_app wrappedsthptr
+                 rowcount <- getSqlRowCount sthptr
+                 swapMVar (colnamemv sstate) []
+                 touchForeignPtr fsthptr
+                 return rowcount
+         colcount -> do fgetcolnames sthptr >>= swapMVar (colnamemv sstate)
                         swapMVar (nextrowmv sstate) 0
                         swapMVar (stomv sstate) (Just fresptr)
+                        touchForeignPtr fsthptr
                         return 0
-         _ -> do l $ "PGRES ERROR: " ++ squery sstate
-                 csstatusmsg <- pqresStatus status
-                 cserrormsg <- pqresultErrorMessage resptr
-                 statusmsg <- peekCString csstatusmsg
-                 errormsg <- peekCString cserrormsg
-                 pqclear_raw resptr
-                 throwDyn $ 
-                          SqlError {seState = "",
-                                    seNativeError = fromIntegral status,
-                                    seErrorMsg = "execute: " ++ statusmsg ++
-                                                 ": " ++ errormsg}
+
 {- General algorithm: find out how many columns we have, check the type
 of each to see if it's NULL.  If it's not, fetch it as text and return that.
 -}
@@ -129,7 +114,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                Nothing -> l "ffr nos" >> return (stmt, ((-1), Nothing))
                Just cmstmt -> withStmt cmstmt $ \cstmt ->
                  do l $ "ffetchrow: " ++ show nextrow
-                    numrows <- pqntuples cstmt
+                    numrows <- getSqlRowCount cstmt
                     l $ "numrows: " ++ show numrows
                     if nextrow >= numrows
                        then do l "no more rows"
@@ -137,11 +122,12 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                                ffinish cmstmt
                                return (Nothing, ((-1), Nothing))
                        else do l "getting stuff"
-                               ncols <- pqnfields cstmt
+                               ncols <- getNumResultCols cstmt
                                res <- mapM (getCol cstmt nextrow) 
                                       [0..(ncols - 1)]
                                return (stmt, (nextrow + 1, Just res))
           getCol p row icol = 
+             do -- FIXME: start here
              do isnull <- pqgetisnull p row icol
                 if isnull /= 0
                    then return SqlNull
