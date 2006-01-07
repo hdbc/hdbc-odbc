@@ -75,7 +75,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Env -> ConnInfo -> IO Connection
+mkConn :: String -> Env -> Conn -> IO Connection
 mkConn args ienv iconn = withConn iconn $ \cconn -> 
     do let protover = "FIXME"
        let serverver = "FIXME"
