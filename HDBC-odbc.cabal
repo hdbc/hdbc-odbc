@@ -1,21 +1,20 @@
 Extra-Libraries: pq
-include-dirs: /usr/include/postgresql, .
+include-dirs: .
 -- extra-lib-dirs: 
-Name: HDBC-postgresql
+Name: HDBC-odbc
 Version: 0.99.0.0
 License: LGPL
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Stability: Alpha
 Copyright: Copyright (c) 2005 John Goerzen
-Exposed-Modules: Database.HDBC.PostgreSQL
-Other-Modules: Database.HDBC.PostgreSQL.Connection,
- Database.HDBC.PostgreSQL.Statement,
- Database.HDBC.PostgreSQL.Types,
- Database.HDBC.PostgreSQL.Utils,
- Database.HDBC.PostgreSQL.Parser
+Exposed-Modules: Database.HDBC.ODBC
+Other-Modules: Database.HDBC.ODBC.Connection,
+ Database.HDBC.ODBC.Statement,
+ Database.HDBC.ODBC.Types,
+ Database.HDBC.ODBC.Utils
 --Extensions: ExistentialQuantification, AllowOverlappingInstances,
 --    AllowUndecidableInstances, CPP
 Extensions: ExistentialQuantification
 Build-Depends: base, mtl, HDBC>=0.99.0, parsec
 GHC-Options: -O2
-C-Sources: hdbc-postgresql-helper.c
+C-Sources: hdbc-odbc-helper.c

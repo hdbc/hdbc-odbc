@@ -25,7 +25,7 @@ hugsbuild: setup
 	./setup configure --hugs
 	./setup build
 
-setup: Setup.lhs HDBC-postgresql.cabal
+setup: Setup.lhs HDBC-odbc.cabal
 	ghc -package Cabal Setup.lhs -o setup
 
 clean:
