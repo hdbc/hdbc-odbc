@@ -84,12 +84,12 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
        sqlPrepare sthptr cquery cqlen >>= 
             checkError "execute prepare" (env sstate)
 
-       cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizerFree)
-       zipWithM_ (bindCol sthptr) cargs [1..]
+       cargsraw <- zipWithM (bindCol sthptr) args [1..]
+       let cargs = catMaybes cargs
 
        sqlExecute sthptr >>=
             checkError "execute execute" (env sstate) rc1
-       mapM touchForeignPtr cargs
+       mapM (\(a, b) -> touchForeignPtr a >> touchForeignPtr b) cargs
        rc <- getNumResultCols sthptr
        
        case rc of
@@ -104,12 +104,31 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                         touchForeignPtr fsthptr
                         return 0
 
-bindCol sthptr (carg, icol) = withForeignPtr carg $ \arg ->
-                              alloca $ \pdtype ->
-    do sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype nullPtr nullPtr 
+bindCol sthptr arg icol = withForeignPtr carg $ \arg ->
+                           alloca $ \pdtype ->
+                           alloca $ \pcolsize ->
+                           alloca $ \pdecdigits ->
+    do cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizerFree)
+-- start here
+       sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype nullPtr nullPtr 
                       nullPtr >>= checkError "bindcol/describe" sthptr
        coltype <- peek pdtype
-       sqlBindParamenter sthptr -- start here
+       case arg of
+         SqlNull -> do sqlBindParamenter sthptr icol #{const SQL_PARAM_INPUT}
+                          #{const SQL_CHAR} coltype colsize decdigits
+                          nullPtr 0 #{const SQL_NULL_DATA} >>=
+                          checkError ("bindparameter " ++ show icol) 
+                                       sthptr
+                       return Nothing
+         x -> do (csptr, cslen) <- newCStringLen (fromSql x)
+                 with (fromIntegral cslen) $ \pcslen -> 
+                  do fcsptr <- newForeignPtr finalizerFree csptr
+                     fcslenptr <- newForeignPtr finalizerFree pcslen
+                     sqlBindParameter sthptr icol #{const SQL_PARAM_INPUT}
+                       #{const SQL_CHAR} coltype colsize decdigits
+                       csptr (cslen + 1) pcslen
+                       >>= checkError ("bindparameter " ++ show icol) sthptr
+                     return (Just (fcsptr, fcslenptr))
        
 
 {- General algorithm: find out how many columns we have, check the type
