@@ -33,6 +33,7 @@ import Foreign.Storable
 import Control.Monad
 import Data.List
 import Data.Word
+import Data.Int
 import Control.Exception
 import System.IO
 
@@ -168,3 +169,27 @@ ffinish p = withRawStmt p $ sqlFreeHandleSth_app
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
   wrapstmt :: Ptr CStmt -> IO (Ptr WrappedCStmt)
+
+foreign import ccall unsafe "sql.h SQLDescribeCol"
+  sqlDescribeCol :: Ptr CStmt   
+                 -> #{type SQLSMALLINT} -- ^ Column number
+                 -> CString     -- ^ Column name
+                 -> #{type SQLSMALLINT} -- ^ Buffer length
+                 -> Ptr (#{type SQLSMALLINT}) -- ^ name length ptr
+                 -> Ptr (#{type SQLSMALLINT}) -- ^ data type ptr
+                 -> Ptr (#{type SQLUINTEGER}) -- ^ column size ptr
+                 -> Ptr (#{type SQLSMALLINT}) -- ^ decimal digits ptr
+                 -> Ptr (#{type SQLSMALLINT}) -- ^ nullable ptr
+                 -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLGetData"
+  sqlGetData :: Ptr CStmt       -- ^ statement handle
+             -> #{type SQLUSMALLINT} -- ^ Column number
+             -> #{type SQLSMALLINT} -- ^ target type
+             -> CString -- ^ target value pointer (void * in C)
+             -> #{type SQLINTEGER} -- ^ buffer len
+             -> Ptr (#{type SQLINTEGER})
+             -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
+  sqlFreeHandleSth_app :: Ptr WrappedCStmt -> IO ()

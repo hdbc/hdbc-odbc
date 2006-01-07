@@ -7,9 +7,11 @@ int sqlSucceeded(SQLRETURN ret) {
   return SQL_SUCCEEDED(ret);
 }
 
+/*
 SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl) {
   return SQLFreeHandle(SQL_HANDLE_ENV, hdl);
 }
+*/
 
 
 /* Things can't finalize more than once.  
@@ -42,15 +44,16 @@ void PQfinish_finalizer(finalizeonce *conn) {
   free(conn);
 }
 
-void PQclear_app(finalizeonce *res) {
+void sqlFreeHandleSth_app(finalizeonce *res) {
   if (res->isfinalized)
     return;
-  PQclear((PGresult *) (res->encapobj));
+  SQLCloseCursor((SQLHSTMT) (res->encapobj));
+  SQLFreeHandle(SQL_HANDLE_STMT, (SQLHANDLE) (res->encapobj));
   res->isfinalized = 1;
 }
 
-void PQclear_finalizer(finalizeonce *res) {
-  PQclear_app(res);
+void sqlFreeHandleSth_finalizer(finalizeonce *res) {
+  sqlFreeHandleSth_app(res);
   free(res);
 }
 
