@@ -35,6 +35,7 @@ import Foreign.Ptr
 import Data.Word
 
 #include <sql.h>
+#include <sqlext.h>
 
 {- | Connect to an ODBC server.
 
@@ -135,6 +136,4 @@ foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
 
   wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
 
-foreign import ccall unsafe "libpq-fe.h PQstatus"
-  pqstatus :: Ptr CConn -> IO #{type ConnStatusType}
 

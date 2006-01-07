@@ -16,12 +16,12 @@ Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
 
-module Database.HDBC.PostgreSQL.Utils where
+module Database.HDBC.ODBC.Utils where
 import Foreign.C.String
 import Foreign.ForeignPtr
 import Foreign.Ptr
 import Database.HDBC.Types
-import Database.HDBC.PostgreSQL.Types
+import Database.HDBC.ODBC.Types
 import Foreign.C.Types
 import Control.Exception
 import Foreign.Storable

@@ -17,7 +17,7 @@ Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
 -}
 
 {- |
-   Module     : Database.HDBC.PostgreSQL
+   Module     : Database.HDBC.ODBC
    Copyright  : Copyright (C) 2005 John Goerzen
    License    : GNU LGPL, version 2.1 or above
 
@@ -25,17 +25,17 @@ Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
    Stability  : provisional
    Portability: portable
 
-HDBC driver interface for PostgreSQL 8.x
+HDBC driver interface for ODBC 3.x
 
 Written by John Goerzen, jgoerzen\@complete.org
 -}
 
-module Database.HDBC.PostgreSQL
+module Database.HDBC.ODBC
     (
-     connectPostgreSQL
+     connectODBC
     )
 
 where
 
-import Database.HDBC.PostgreSQL.Connection(connectPostgreSQL)
+import Database.HDBC.ODBC.Connection(connectODBC)
 

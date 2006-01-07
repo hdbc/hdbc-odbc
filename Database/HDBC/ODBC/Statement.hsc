@@ -35,12 +35,12 @@ import Data.List
 import Data.Word
 import Control.Exception
 import System.IO
-import Database.HDBC.PostgreSQL.Parser(convertSQL)
 
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
 
 #include <sql.h>
+#include <sqlext.h>
 
 data SState = 
     SState { stomv :: MVar (Maybe Stmt),
@@ -131,7 +131,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                 let bufsize = size + 127 -- Try to give extra space
                 alloca $ \plen -> 
                  allocaBytes (bufsize + 1) $ \cs ->
-                   do sqlGetData cstmt icol #{const SQL_CHAR_TYPE} 
+                   do sqlGetData cstmt icol #{const SQL_CHAR} 
                                  cs bufsize plen
                       reslen <- peek plen
                       case reslen of

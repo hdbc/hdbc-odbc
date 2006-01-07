@@ -1,4 +1,4 @@
-module Database.HDBC.PostgreSQL.Types
+module Database.HDBC.ODBC.Types
 where
 
 import Foreign.ForeignPtr

@@ -1,4 +1,4 @@
-#include <libpq-fe.h>
+#include <sql.h>
 
 extern int sqlSucceeded(SQLRETURN ret);
 extern SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl);
