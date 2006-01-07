@@ -45,10 +45,11 @@ checkError msg o res =
 
 raiseError :: String -> #{type SQLRETURN} -> SqlHandleT -> IO a
 raiseError msg code cconn =
-    do (statelist, errorlist) <- getdiag ht hp 1 
-       throwDyn $ SqlError {seState = show statelist,
+    do info <- getdiag ht hp 1 
+       throwDyn $ SqlError {seState = show (map fst info),
                             seNativeError = fromIntegral code,
-                            seErrorMsg = msg ++ ": " ++ show errorlist}
+                            seErrorMsg = msg ++ ": " ++  
+                                         show (map snd info)}
        where (ht, hp::(Ptr SqlHandle)) = case cconn of
                           EnvHandle c -> (#{const SQL_HANDLE_ENV}, castPtr c)
                           DbcHandle c -> (#{const SQL_HANDLE_DBC}, castPtr c)
@@ -64,10 +65,11 @@ raiseError msg code cconn =
                        else do state <- peekCStringLen (csstate, 5)
                                nat <- peek pnaterr
                                msglen <- peek pmsglen
-                               msg <- peekCStringLen (csmsg, msglen)
+                               msg <- peekCStringLen (csmsg, 
+                                                      fromIntegral msglen)
                                next <- getdiag ht hp (irow + 1)
-                               return $ [state, 
-                                         (show nat) ++ ": " ++ msg]
+                               return $ (state, 
+                                         (show nat) ++ ": " ++ msg) : next
 
 {- This is a little hairy.
 
