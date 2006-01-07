@@ -20,6 +20,7 @@ module Database.HDBC.ODBC.Utils where
 import Foreign.C.String
 import Foreign.ForeignPtr
 import Foreign.Ptr
+import Data.Int
 import Database.HDBC.Types
 import Database.HDBC.ODBC.Types
 import Foreign.C.Types
@@ -31,21 +32,42 @@ import Data.Word
 
 #include "hdbc-odbc-helper.h"
 
-checkError :: String -> Env -> #{type SQLRETURN} -> IO ()
+data SqlHandleT = EnvHandle (Ptr CEnv)
+               | DbcHandle (Ptr CConn)
+               | StmtHandle (Ptr CStmt)
+
+checkError :: String -> SqlHandleT -> #{type SQLRETURN} -> IO ()
 checkError msg o res =
-    withEnv o $ \p ->
-        do rc <- sqlSucceeded res
+        do let rc = sqlSucceeded res
            if rc == 0
-               then throwDyn
+               then raiseError msg res o
                else return ()
 
-raiseError :: String -> Word32 -> (Ptr CConn) -> IO a
-raiseError msg code cconn =
-    do rc <- pqerrorMessage cconn
-       str <- peekCString rc
-       throwDyn $ SqlError {seState = "",
+raiseError :: String -> #{type SQLRETURN} -> SqlHandleT -> IO a
+raiseError msg code cconn accum =
+    do (statelist, errorlist) <- getdiag ht hp 1 
+       throwDyn $ SqlError {seState = show statelist,
                             seNativeError = fromIntegral code,
-                            seErrorMsg = msg ++ ": " ++ str}
+                            seErrorMsg = msg ++ ": " ++ show errorlist}
+       where (ht, hp) = case cconn of
+                          EnvHandle c -> (#{const SQL_HANDLE_ENV}, c)
+                          DbcHandle c -> (#{const SQL_HANDLE_DBC}, c)
+                          StmtHandle c -> (#{const SQL_HANDLE_STMT}, c)
+             getdiag ht hp irow = allocaBytes 6 $ \csstate ->
+                                  alloca $ \pnaterr ->
+                                  allocaBytes 1025 $ \csmsg ->
+                                  alloca $ \pmsglen ->
+                 do ret <- sqlGetDiagRec ht hp irow csstate pnaterr
+                           csmsg 1024 pmsglen
+                    if sqlSucceeded ret == 0
+                       then return []
+                       else do state <- peekCStringLen csstate 5
+                               nat <- peek pnaterr
+                               msglen <- peek pmsglen
+                               msg <- peekCStringLen csmsg msglen
+                               next <- getdiag ht hp (irow + 1)
+                               return $ [state, 
+                                         show nat ++ ": " ++ msg]
 
 {- This is a little hairy.
 
@@ -69,6 +91,12 @@ withStmt = genericUnwrap
 
 withRawStmt :: Stmt -> (Ptr WrappedCStmt -> IO b) -> IO b
 withRawStmt = withForeignPtr
+
+withEnv :: Env -> (Ptr CEnv -> IO b) -> IO b
+withEnv = genericUnwrap
+
+withRawEnv :: Env -> (Ptr WrappedCEnv -> IO b) -> IO b
+withRawEnv = withForeignPtr
 
 withCStringArr0 :: [SqlValue] -> (Ptr CString -> IO a) -> IO a
 withCStringArr0 inp action = withAnyArr0 convfunc freefunc inp action
@@ -95,7 +123,6 @@ genericUnwrap fptr action = withForeignPtr fptr (\structptr ->
     do objptr <- #{peek finalizeonce, encapobj} structptr
        action objptr
                                                 )
-          
-foreign import ccall unsafe "libpq-fe.h PQerrorMessage"
-  pqerrorMessage :: Ptr CConn -> IO CString
 
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlSucceeded"
+  sqlSucceeded :: #{type SQLRETURN} -> CInt

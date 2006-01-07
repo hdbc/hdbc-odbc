@@ -166,5 +166,5 @@ ffinish :: Stmt -> IO ()
 ffinish p = withRawStmt p $ sqlFreeHandleSth_app 
 
 
-foreign import ccall unsafe "hdbc-postgresql-helper.h wrapobj"
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
   wrapstmt :: Ptr CStmt -> IO (Ptr WrappedCStmt)

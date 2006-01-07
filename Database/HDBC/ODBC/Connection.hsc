@@ -39,8 +39,7 @@ import Data.Word
 
 {- | Connect to an ODBC server.
 
-See <http://www.postgresql.org/docs/8.1/static/libpq.html#LIBPQ-CONNECT> for the meaning
-of the connection string. -}
+-}
 connectODBC :: String -> IO Connection
 connectODBC args = withCStringLen args $ \(cs, cslen) -> 
                    alloca $ \(penvptr::Ptr SqlHandle) ->
