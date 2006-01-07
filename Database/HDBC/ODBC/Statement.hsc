@@ -240,7 +240,7 @@ foreign import ccall unsafe "sql.h SQLGetData"
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
   sqlFreeHandleSth_app :: Ptr WrappedCStmt -> IO ()
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_finalizer"
+foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleSth_finalizer"
   sqlFreeHandleSth_ptr :: FunPtr (Ptr WrappedCStmt -> IO ())
 
 foreign import ccall unsafe "sql.h SQLPrepare"
