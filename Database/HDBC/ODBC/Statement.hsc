@@ -123,21 +123,31 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                                return (Nothing, ((-1), Nothing))
                        else do l "getting stuff"
                                ncols <- getNumResultCols cstmt
-                               res <- mapM (getCol cstmt nextrow) 
+                               res <- mapM (getCol cstmt ) 
                                       [0..(ncols - 1)]
                                return (stmt, (nextrow + 1, Just res))
-          getCol p row icol = 
-             do -- FIXME: start here
-             do isnull <- pqgetisnull p row icol
-                if isnull /= 0
-                   then return SqlNull
-                   else do text <- pqgetvalue p row icol
-                           s <- peekCString text
-                           return (SqlString s)
+          getCol cstmt icol = 
+             do size <- getColSize cstmt icol
+                let bufsize = size + 127 -- Try to give extra space
+                alloca $ \plen -> 
+                 allocaBytes (bufsize + 1) $ \cs ->
+                   do sqlGetData cstmt icol #{const SQL_CHAR_TYPE} 
+                                 cs bufsize plen
+                      reslen <- peek plen
+                      case reslen of
+                        #{const SQL_NULL_DATA} -> return SqlNull
+                        #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
+                        len -> do s <- peekCStringLen (cs, len)
+                                  return (SqlString s)
+
 
 fgetcolnames cstmt =
-    do ncols <- pqnfields cstmt
-       mapM (\i -> pqfname cstmt i >>= peekCString) [0..(ncols - 1)]
+    do ncols <- getNumResultCols cstmt
+       mapM getname [1..ncols]
+    where getname icol = alloca $ \lp ->
+                         allocaBytes 128 $ \cs ->
+              do sqlDescribeCol cstmt icol cs 127 lp nullPtr nullPtr nullPtr nullPtr
+                 peekCStringLen (cs, lp)
 
 -- FIXME: needs a faster algorithm.
 fexecutemany :: SState -> [[SqlValue]] -> IO ()
@@ -153,51 +163,8 @@ public_ffinish sstate =
           worker (Just sth) = ffinish sth >> return Nothing
 
 ffinish :: Stmt -> IO ()
-ffinish p = withRawStmt p $ pqclear
+ffinish p = withRawStmt p $ sqlFreeHandleSth_app 
 
-foreign import ccall unsafe "libpq-fe.h PQresultStatus"
-  pqresultStatus :: (Ptr CStmt) -> IO #{type ExecStatusType}
-
-foreign import ccall unsafe "libpq-fe.h PQexecParams"
-  pqexecParams :: (Ptr CConn) -> CString -> CInt ->
-                  (Ptr #{type Oid}) ->
-                  (Ptr CString) ->
-                  (Ptr CInt) ->
-                  (Ptr CInt) ->
-                  CInt ->
-                  IO (Ptr CStmt)
-
-foreign import ccall unsafe "hdbc-postgresql-helper.h PQclear_app"
-  pqclear :: Ptr WrappedCStmt -> IO ()
-
-foreign import ccall unsafe "hdbc-postgresql-helper.h &PQclear_finalizer"
-  pqclearptr :: FunPtr (Ptr WrappedCStmt -> IO ())
-
-foreign import ccall unsafe "libpq-fe.h PQclear"
-  pqclear_raw :: Ptr CStmt -> IO ()
 
 foreign import ccall unsafe "hdbc-postgresql-helper.h wrapobj"
   wrapstmt :: Ptr CStmt -> IO (Ptr WrappedCStmt)
-
-foreign import ccall unsafe "libpq-fe.h PQcmdTuples"
-  pqcmdTuples :: Ptr CStmt -> IO CString
-foreign import ccall unsafe "libpq-fe.h PQresStatus"
-  pqresStatus :: #{type ExecStatusType} -> IO CString
-
-foreign import ccall unsafe "libpq-fe.h PQresultErrorMessage"
-  pqresultErrorMessage :: (Ptr CStmt) -> IO CString
-
-foreign import ccall unsafe "libpq-fe.h PQntuples"
-  pqntuples :: Ptr CStmt -> IO CInt
-
-foreign import ccall unsafe "libpq-fe.h PQnfields"
-  pqnfields :: Ptr CStmt -> IO CInt
-
-foreign import ccall unsafe "libpq-fe.h PQgetisnull"
-  pqgetisnull :: Ptr CStmt -> CInt -> CInt -> IO CInt
-
-foreign import ccall unsafe "libpq-fe.h PQgetvalue"
-  pqgetvalue :: Ptr CStmt -> CInt -> CInt -> IO CString
-
-foreign import ccall unsafe "libpq-fe.h PQfname"
-  pqfname :: Ptr CStmt -> CInt -> IO CString
