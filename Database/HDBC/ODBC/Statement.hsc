@@ -75,20 +75,21 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                        alloca $ \(psthptr::Ptr CStmt) ->
     do l "in fexecute"
        public_ffinish sstate    -- Sets nextrowmv to -1
-       rc1 <- sqlAllocHandle #{const SQL_HANDLE_STMT} cconn psthptr
+       rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
-       wrappedsthptr <- wrapsth sthptr
+       wrappedsthptr <- wrapstmt sthptr
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
        checkError "execute allocHandle" (env sstate) rc1
 
        sqlPrepare sthptr cquery cqlen >>= 
             checkError "execute prepare" (env sstate)
 
-       cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizeFree)
+       cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizerFree)
        zipWithM_ (bindCol sthptr) cargs [1..]
 
        sqlExecute sthptr >>=
             checkError "execute execute" (env sstate) rc1
+       mapM touchForeignPtr cargs
        rc <- getNumResultCols sthptr
        
        case rc of
@@ -102,6 +103,14 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                         swapMVar (stomv sstate) (Just fresptr)
                         touchForeignPtr fsthptr
                         return 0
+
+bindCol sthptr (carg, icol) = withForeignPtr carg $ \arg ->
+                              alloca $ \pdtype ->
+    do sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype nullPtr nullPtr 
+                      nullPtr >>= checkError "bindcol/describe" sthptr
+       coltype <- peek pdtype
+       sqlBindParamenter sthptr -- start here
+       
 
 {- General algorithm: find out how many columns we have, check the type
 of each to see if it's NULL.  If it's not, fetch it as text and return that.
@@ -196,3 +205,14 @@ foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_finalizer"
   sqlFreeHandleSth_ptr :: FunPtr (Ptr WrappedCStmt -> IO ())
+
+foreign import ccall unsafe "sql.h SQLPrepare"
+  sqlPrepare :: Ptr CStmt -> CString -> #{type SQLINTEGER} 
+             -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLExecute"
+  sqlExecute :: Ptr CStmt -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLAllocHandle"
+  sqlAllocStmtHandle :: #{type SQLSMALLINT} -> Ptr CConn ->
+                        Ptr (Ptr CStmt) -> IO #{type SQLRETURN}
