@@ -53,7 +53,7 @@ data SState =
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
-newSth :: Conn -> String -> IO Statement               
+newSth :: ConnInfo -> String -> IO Statement               
 newSth indbo query = 
     do l "in newSth"
        newstomv <- newMVar Nothing
@@ -73,23 +73,24 @@ newSth indbo query =
 FIXME lots of room for improvement here (types, etc). -}
 fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                        withCStringLen (squery sstate) $ \(cquery, cqlen) ->
-                       alloca $ \(psthptr::Ptr CStmt) ->
+                       alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
     do l "in fexecute"
        public_ffinish sstate    -- Sets nextrowmv to -1
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
        wrappedsthptr <- wrapstmt sthptr
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError "execute allocHandle" (env sstate) rc1
+       checkError "execute allocHandle" (DbcHandle cconn) rc1
 
-       sqlPrepare sthptr cquery cqlen >>= 
-            checkError "execute prepare" (env sstate)
+       sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
+            checkError "execute prepare" (StmtHandle sthptr)
 
        cargsraw <- zipWithM (bindCol sthptr) args [1..]
-       let cargs = catMaybes cargs
+       let cargs = catMaybes cargsraw
 
        sqlExecute sthptr >>=
-            checkError "execute execute" (env sstate) rc1
+            checkError "execute execute" (StmtHandle sthptr)
+
        mapM (\(a, b) -> touchForeignPtr a >> touchForeignPtr b) cargs
        rc <- getNumResultCols sthptr
        
@@ -98,7 +99,7 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                  rowcount <- getSqlRowCount sthptr
                  swapMVar (colnamemv sstate) []
                  touchForeignPtr fsthptr
-                 return rowcount
+                 return (fromIntegral rowcount)
          colcount -> do fgetcolnames sthptr >>= swapMVar (colnamemv sstate)
                         swapMVar (nextrowmv sstate) 0
                         swapMVar (stomv sstate) (Just fsthptr)
@@ -106,38 +107,41 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                         return 0
 
 getNumResultCols sthptr = alloca $ \pcount ->
-    do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" sthptr
+    do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" 
+                                          (StmtHandle sthptr)
        peek pcount
     
-
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
-    do cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizerFree)
-       sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype pcolsize pdecdigits
-                      nullPtr >>= checkError "bindcol/describe" sthptr
+    do sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype pcolsize pdecdigits
+                      nullPtr >>= checkError "bindcol/describe" 
+                                  (StmtHandle sthptr)
        coltype <- peek pdtype
        colsize <- peek pcolsize
        decdigits <- peek pdecdigits
        case arg of
-         SqlNull -> do sqlBindParameter sthptr icol #{const SQL_PARAM_INPUT}
-                          #{const SQL_CHAR} coltype colsize decdigits
-                          nullPtr 0 #{const SQL_NULL_DATA} >>=
-                          checkError ("bindparameter " ++ show icol) 
-                                       sthptr
+         SqlNull -> do rc1 <- sqlBindParameter sthptr (fromIntegral icol)
+                              #{const SQL_PARAM_INPUT}
+                              #{const SQL_CHAR} coltype colsize decdigits
+                              nullPtr 0 nullData
+                       checkError ("bindparameter " ++ show icol)
+                                  (StmtHandle sthptr) rc1
                        return Nothing
          x -> do (csptr, cslen) <- newCStringLen (fromSql x)
                  with (fromIntegral cslen) $ \pcslen -> 
                   do fcsptr <- newForeignPtr finalizerFree csptr
                      fcslenptr <- newForeignPtr finalizerFree pcslen
-                     sqlBindParameter sthptr icol #{const SQL_PARAM_INPUT}
+                     sqlBindParameter sthptr (fromIntegral icol)
+                       #{const SQL_PARAM_INPUT}
                        #{const SQL_CHAR} coltype colsize decdigits
-                       csptr (cslen + 1) pcslen
-                       >>= checkError ("bindparameter " ++ show icol) sthptr
+                       csptr (fromIntegral cslen + 1) pcslen
+                       >>= checkError ("bindparameter " ++ show icol) 
+                           (StmtHandle sthptr)
                      return (Just (fcsptr, fcslenptr))
        
 getSqlRowCount cstmt = alloca $ \prows ->
-     do sqlRowCount cstmt prows >>= checkError "SQLRowCount" cstmt
+     do sqlRowCount cstmt prows >>= checkError "SQLRowCount" (StmtHandle cstmt)
         peek prows
 
 {- General algorithm: find out how many columns we have, check the type
@@ -154,7 +158,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                  do l $ "ffetchrow: " ++ show nextrow
                     numrows <- getSqlRowCount cstmt
                     l $ "numrows: " ++ show numrows
-                    if nextrow >= numrows
+                    if nextrow >= fromIntegral numrows
                        then do l "no more rows"
                                -- Don't use public_ffinish here
                                ffinish cmstmt
@@ -167,18 +171,19 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
           getCol cstmt icol = alloca $ \psize ->
              do sqlDescribeCol cstmt icol nullPtr 0 nullPtr nullPtr
                                psize nullPtr nullPtr
-                               >>= checkError "sqlDescribeCol" cstmt
+                               >>= checkError "sqlDescribeCol" 
+                                       (StmtHandle cstmt)
                 size <- peek psize
                 let bufsize = size + 127 -- Try to give extra space
                 alloca $ \plen -> 
-                 allocaBytes (bufsize + 1) $ \cs ->
-                   do sqlGetData cstmt icol #{const SQL_CHAR} 
-                                 cs bufsize plen
+                 allocaBytes (fromIntegral bufsize + 1) $ \cs ->
+                   do sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR} 
+                                 cs (fromIntegral bufsize) plen
                       reslen <- peek plen
                       case reslen of
                         #{const SQL_NULL_DATA} -> return SqlNull
                         #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                        len -> do s <- peekCStringLen (cs, len)
+                        len -> do s <- peekCStringLen (cs, fromIntegral len)
                                   return (SqlString s)
 
 
@@ -188,7 +193,8 @@ fgetcolnames cstmt =
     where getname icol = alloca $ \lp ->
                          allocaBytes 128 $ \cs ->
               do sqlDescribeCol cstmt icol cs 127 lp nullPtr nullPtr nullPtr nullPtr
-                 peekCStringLen (cs, lp)
+                 len <- peek lp
+                 peekCStringLen (cs, fromIntegral len)
 
 -- FIXME: needs a faster algorithm.
 fexecutemany :: SState -> [[SqlValue]] -> IO ()
@@ -268,3 +274,5 @@ foreign import ccall unsafe "sql.h SQLBindParameter"
                    -> Ptr #{type SQLINTEGER} -- ^ strlen_or_indptr
                    -> IO #{type SQLRETURN}
 
+foreign import ccall unsafe "hdbc-odbc-helper.h &nullData"
+  nullData :: Ptr #{type SQLINTEGER}
