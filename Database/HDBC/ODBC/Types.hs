@@ -7,9 +7,9 @@ import Foreign
 -- This may be wrong -- is SqlHandle always a pointer to something?
 -- but it works with hsql so I'm going to use it here until I hear of it
 -- breaking.
-newtype SqlHandle = Ptr ()
+--newtype SqlHandle = Ptr ()
 
-type CEnv = SqlHandle
+data CEnv = CEnv
 type WrappedCEnv = Ptr CEnv
 type Env = ForeignPtr WrappedCEnv
 

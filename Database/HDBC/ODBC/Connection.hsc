@@ -43,48 +43,51 @@ import Data.Int
 -}
 connectODBC :: String -> IO Connection
 connectODBC args = withCStringLen args $ \(cs, cslen) -> 
-                   alloca $ \(penvptr::Ptr SqlHandle) ->
-                   alloca $ \(pdbcptr::Ptr CConn) ->
+                   alloca $ \(penvptr::Ptr (Ptr CEnv)) ->
+                   alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
          do -- Create the Environment Handle
             rc1 <- sqlAllocHandle #{const SQL_HANDLE_ENV}
                                   #{const SQL_NULL_HANDLE}
-                                   penvptr
-            envptr <- peek penvptr
+                                   (castPtr penvptr)
+            envptr <- peek penvptr 
             wrappedenvptr <- wrapenv envptr
             fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr wrappedenvptr
-            checkError "connectODBC/alloc env" fenvptr rc1
+            checkError "connectODBC/alloc env" (EnvHandle envptr) rc1
             sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
                               #{const SQL_OV_ODBC3} 0
 
             -- Create the DBC handle.
-            sqlAllocHandle #{const SQL_HANDLE_DBC} envptr pdbcptr 
-                          >>= checkError "connectODBC/alloc dbc" fenvptr
+            sqlAllocHandle #{const SQL_HANDLE_DBC} (castPtr envptr) 
+                               (castPtr pdbcptr)
+                          >>= checkError "connectODBC/alloc dbc"
+                                  (EnvHandle envptr)
             dbcptr <- peek pdbcptr
             wrappeddbcptr <- wrapconn dbcptr
             fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
 
             -- Now connect.
-            sqlDriverConnect dbcptr nullPtr cs cslen nullPtr 0 nullPtr
+            sqlDriverConnect dbcptr nullPtr cs (fromIntegral cslen)
+                             nullPtr 0 nullPtr
                              #{const SQL_DRIVER_COMPLETE}
-                              >>= checkError "connectODBC/sqlDriverConnect" fenvptr
+                              >>= checkError "connectODBC/sqlDriverConnect" 
+                                  (DbcHandle dbcptr)
             mkConn args fenvptr fdbcptr
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Env -> Conn -> IO Connection
-mkConn args ienv iconn = withConn iconn $
-  \cconn -> 
-    do begin_transaction conn
-       let protover = "FIXME"
+mkConn :: String -> Env -> ConnInfo -> IO Connection
+mkConn args ienv iconn = withConn iconn $ \cconn -> 
+    do let protover = "FIXME"
        let serverver = "FIXME"
        let clientver = "FIXME"
        let conninfo = ConnInfo {conn = iconn, env = ienv}
+       begin_transaction conninfo
        return $ Connection {
-                            disconnect = fdisconnect iconn,
-                            commit = fcommit iconn,
-                            rollback = frollback iconn,
-                            run = frun iconn,
-                            prepare = newSth iconn,
+                            disconnect = fdisconnect conninfo,
+                            commit = fcommit conninfo,
+                            rollback = frollback conninfo,
+                            run = frun conninfo,
+                            prepare = newSth conninfo,
                             -- FIXME: add clone
                             hdbcDriverName = "odbc",
                             hdbcClientVer = clientver,
@@ -113,11 +116,12 @@ frollback o =  do frun o "ROLLBACK" []
                   begin_transaction o
 
 fdisconnect conninfo  = withRawConn (conn conninfo) $ \rawconn -> 
-   sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (env conninfo)
+                        withConn (conn conninfo) $ \llconn ->
+   sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (DbcHandle $ llconn)
 
 foreign import ccall unsafe "sql.h SQLAllocHandle"
-  sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr SqlHandle -> 
-                    Ptr SqlHandle -> IO (#{type SQLRETURN})
+  sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
+                    Ptr () -> IO (#{type SQLRETURN})
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
   wrapenv :: Ptr CEnv -> IO (Ptr WrappedCEnv)
@@ -129,10 +133,10 @@ foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleEnv_fptr"
   sqlFreeHandleEnv_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_fptr"
-  sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
+  sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
-  sqlFreeHandleDbc_app :: Ptr WrappedCEnv -> IO (#{type SQLRETURN})
+  sqlFreeHandleDbc_app :: Ptr WrappedCConn -> IO (#{type SQLRETURN})
 
 foreign import ccall unsafe "sql.h SQLSetEnvAttr"
   sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
@@ -142,4 +146,4 @@ foreign import ccall unsafe "sql.h SQLDriverConnect"
   sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
                    -> CString -> #{type SQLSMALLINT}
                    -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
-                   -> #{type SQLRETURN}
+                   -> IO #{type SQLRETURN}

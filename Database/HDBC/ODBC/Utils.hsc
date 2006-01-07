@@ -50,7 +50,7 @@ raiseError msg code cconn =
                             seNativeError = fromIntegral code,
                             seErrorMsg = msg ++ ": " ++  
                                          show (map snd info)}
-       where (ht, hp::(Ptr SqlHandle)) = case cconn of
+       where (ht, hp::(Ptr ())) = case cconn of
                           EnvHandle c -> (#{const SQL_HANDLE_ENV}, castPtr c)
                           DbcHandle c -> (#{const SQL_HANDLE_DBC}, castPtr c)
                           StmtHandle c -> (#{const SQL_HANDLE_STMT}, castPtr c)
@@ -130,7 +130,7 @@ foreign import ccall unsafe "sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt
 
 foreign import ccall unsafe "sql.h SQLGetDiagRec"
-  sqlGetDiagRec :: #{type SQLSMALLINT} -> Ptr SqlHandle -> 
+  sqlGetDiagRec :: #{type SQLSMALLINT} -> Ptr () -> 
                    #{type SQLSMALLINT} -> CString -> Ptr (#{type SQLINTEGER})
                    -> CString -> #{type SQLSMALLINT} 
                    -> Ptr (#{type SQLSMALLINT}) -> IO #{type SQLRETURN}
