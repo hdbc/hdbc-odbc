@@ -126,7 +126,7 @@ genericUnwrap fptr action = withForeignPtr fptr (\structptr ->
        action objptr
                                                 )
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlSucceeded"
+foreign import ccall unsafe "sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt
 
 foreign import ccall unsafe "sql.h SQLGetDiagRec"
