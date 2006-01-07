@@ -44,15 +44,15 @@ checkError msg o res =
                else return ()
 
 raiseError :: String -> #{type SQLRETURN} -> SqlHandleT -> IO a
-raiseError msg code cconn accum =
+raiseError msg code cconn =
     do (statelist, errorlist) <- getdiag ht hp 1 
        throwDyn $ SqlError {seState = show statelist,
                             seNativeError = fromIntegral code,
                             seErrorMsg = msg ++ ": " ++ show errorlist}
-       where (ht, hp) = case cconn of
-                          EnvHandle c -> (#{const SQL_HANDLE_ENV}, c)
-                          DbcHandle c -> (#{const SQL_HANDLE_DBC}, c)
-                          StmtHandle c -> (#{const SQL_HANDLE_STMT}, c)
+       where (ht, hp::(Ptr SqlHandle)) = case cconn of
+                          EnvHandle c -> (#{const SQL_HANDLE_ENV}, castPtr c)
+                          DbcHandle c -> (#{const SQL_HANDLE_DBC}, castPtr c)
+                          StmtHandle c -> (#{const SQL_HANDLE_STMT}, castPtr c)
              getdiag ht hp irow = allocaBytes 6 $ \csstate ->
                                   alloca $ \pnaterr ->
                                   allocaBytes 1025 $ \csmsg ->
@@ -61,13 +61,13 @@ raiseError msg code cconn accum =
                            csmsg 1024 pmsglen
                     if sqlSucceeded ret == 0
                        then return []
-                       else do state <- peekCStringLen csstate 5
+                       else do state <- peekCStringLen (csstate, 5)
                                nat <- peek pnaterr
                                msglen <- peek pmsglen
-                               msg <- peekCStringLen csmsg msglen
+                               msg <- peekCStringLen (csmsg, msglen)
                                next <- getdiag ht hp (irow + 1)
                                return $ [state, 
-                                         show nat ++ ": " ++ msg]
+                                         (show nat) ++ ": " ++ msg]
 
 {- This is a little hairy.
 
@@ -126,3 +126,9 @@ genericUnwrap fptr action = withForeignPtr fptr (\structptr ->
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt
+
+foreign import ccall unsafe "sql.h SQLGetDiagRec"
+  sqlGetDiagRec :: #{type SQLSMALLINT} -> Ptr SqlHandle -> 
+                   #{type SQLSMALLINT} -> CString -> Ptr (#{type SQLINTEGER})
+                   -> CString -> #{type SQLSMALLINT} 
+                   -> Ptr (#{type SQLSMALLINT}) -> IO #{type SQLRETURN}

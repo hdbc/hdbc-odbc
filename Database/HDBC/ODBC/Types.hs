@@ -8,8 +8,10 @@ import Foreign
 -- but it works with hsql so I'm going to use it here until I hear of it
 -- breaking.
 newtype SqlHandle = Ptr ()
+
 type CEnv = SqlHandle
-type Env = ForeignPtr CEnv
+type WrappedCEnv = Ptr CEnv
+type Env = ForeignPtr WrappedCEnv
 
 data CConn = CConn
 type WrappedCConn = Ptr CConn
