@@ -33,6 +33,7 @@ import Database.HDBC.ODBC.Utils
 import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
+import Data.Int
 
 #include <sql.h>
 #include <sqlext.h>
@@ -49,7 +50,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                                   #{const SQL_NULL_HANDLE}
                                    penvptr
             envptr <- peek penvptr
-            wrappedenvptr <- wrappenv envptr
+            wrappedenvptr <- wrapenv envptr
             fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr wrappedenvptr
             checkError "connectODBC/alloc env" fenvptr rc1
             sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
@@ -89,8 +90,9 @@ mkConn args ienv iconn = withConn iconn $
                             hdbcClientVer = clientver,
                             proxiedClientName = "FIXME",
                             proxiedClientVer = show protover,
-                            dbServerVer = show serverver,
-                            getTables = fgetTables iconn}
+                            dbServerVer = show serverver
+                            --getTables = fgetTables iconn
+                           }
 
 --------------------------------------------------
 -- Guts here
@@ -132,7 +134,12 @@ foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_fptr"
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
   sqlFreeHandleDbc_app :: Ptr WrappedCEnv -> IO (#{type SQLRETURN})
 
+foreign import ccall unsafe "sql.h SQLSetEnvAttr"
+  sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
+                   CString -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
-  wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
-
-
+foreign import ccall unsafe "sql.h SQLDriverConnect"
+  sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
+                   -> CString -> #{type SQLSMALLINT}
+                   -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
+                   -> #{type SQLRETURN}
