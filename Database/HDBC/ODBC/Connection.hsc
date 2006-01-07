@@ -116,7 +116,7 @@ fdisconnect conninfo  = withRawConn (conn conninfo) $ \rawconn ->
    sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (env conninfo)
 
 foreign import ccall unsafe "sql.h SQLAllocHandle"
-  sqlAllocHandle :: #{type SQLSMALLINT} -> SqlHandle -> 
+  sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr SqlHandle -> 
                     Ptr SqlHandle -> IO (#{type SQLRETURN})
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
