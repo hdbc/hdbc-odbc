@@ -72,19 +72,19 @@ newSth indbo query =
 FIXME lots of room for improvement here (types, etc). -}
 fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
                        withCStringLen (squery sstate) $ \(cquery, cqlen) ->
-                       mapM withCS args $ \cargs -> 
                        alloca $ \(psthptr::Ptr CStmt) ->
     do l "in fexecute"
        public_ffinish sstate    -- Sets nextrowmv to -1
-       rc1 >= sqlAllocHandle #{const SQL_HANDLE_STMT} cconn psthptr
+       rc1 <- sqlAllocHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
-       wrappedsthptr <- wrappsth sthptr
+       wrappedsthptr <- wrapsth sthptr
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
        checkError "execute allocHandle" (env sstate) rc1
 
        sqlPrepare sthptr cquery cqlen >>= 
             checkError "execute prepare" (env sstate)
 
+       cargs <- mapM (\s -> newCStringLen s >>= newForeignPtr finalizeFree)
        zipWithM_ (bindCol sthptr) cargs [1..]
 
        sqlExecute sthptr >>=
@@ -193,3 +193,6 @@ foreign import ccall unsafe "sql.h SQLGetData"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
   sqlFreeHandleSth_app :: Ptr WrappedCStmt -> IO ()
+
+foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_finalizer"
+  sqlFreeHandleSth_ptr :: FunPtr (Ptr WrappedCStmt -> IO ())
