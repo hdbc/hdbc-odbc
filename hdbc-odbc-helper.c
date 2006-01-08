@@ -86,3 +86,8 @@ void sqlFreeHandleEnv_finalizer(finalizeonce *res) {
 void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;
 }
+
+SQLRETURN enableAutoCommit(SQLHDBC conn) {
+  SQLUINTEGER value = 1;
+  return SQLSetConnectAttr(conn, SQL_ATTR_AUTOCOMMIT, &value, 0);
+}
