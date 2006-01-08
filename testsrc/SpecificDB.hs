@@ -1,8 +1,7 @@
 module SpecificDB where
 import Database.HDBC
-import Database.HDBC.PostgreSQL
-import Database.HDBC.PostgreSQL.Parser(convertSQL)
+import Database.HDBC.ODBC
 import Test.HUnit
 
 connectDB = 
-    handleSqlError (connectPostgreSQL "")
+    handleSqlError (connectODBC "testdb")
