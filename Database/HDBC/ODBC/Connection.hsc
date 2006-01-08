@@ -81,6 +81,9 @@ mkConn args ienv iconn = withConn iconn $ \cconn ->
        let serverver = "FIXME"
        let clientver = "FIXME"
        let conninfo = ConnInfo {conn = iconn, env = ienv}
+       with 1 $ \p ->
+         sqlSetConnectAttr cconn #{const SQL_ATTR_AUTOCOMMIT} p 0
+         >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
        begin_transaction conninfo
        return $ Connection {
                             disconnect = fdisconnect conninfo,
@@ -150,3 +153,8 @@ foreign import ccall unsafe "sql.h SQLDriverConnect"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h getSqlOvOdbc3"
   getSqlOvOdbc3 :: Ptr ()
+
+foreign import ccall unsafe "hdbc-odbc-helper.h SQLSetConnectAttr"
+  sqlSetConnectAttr :: Ptr CConn -> #{type SQLINTEGER} 
+                    -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
+                    -> IO #{type SQLRETURN}

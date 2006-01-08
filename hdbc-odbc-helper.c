@@ -48,6 +48,19 @@ void sqlFreeHandleSth_finalizer(finalizeonce *res) {
   free(res);
 }
 
+void sqlFreeHandleDbc_app(finalizeonce *res) {
+  if (res->isfinalized)
+    return;
+  SQLDisconnect((SQLHDBC) (res->encapobj));
+  SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+  res->isfinalized = 1;
+}
+
+void sqlFreeHandleSth_finalizer(finalizeonce *res) {
+  sqlFreeHandleSth_app(res);
+  free(res);
+}
+
 void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;
 }
