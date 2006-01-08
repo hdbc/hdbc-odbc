@@ -114,8 +114,10 @@ getNumResultCols sthptr = alloca $ \pcount ->
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
-    do sqlDescribeCol sthptr icol nullPtr 0 nullPtr pdtype pcolsize pdecdigits
-                      nullPtr >>= checkError "bindcol/describe" 
+    do sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
+                      nullPtr >>= checkError ("bindcol/describe " 
+                                              ++ show icol ++ ": " ++ 
+                                              show arg)
                                   (StmtHandle sthptr)
        coltype <- peek pdtype
        colsize <- peek pcolsize
@@ -276,3 +278,12 @@ foreign import ccall unsafe "sql.h SQLBindParameter"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &nullData"
   nullData :: Ptr #{type SQLINTEGER}
+
+foreign import ccall unsafe "sql.h SQLDescribeParam"
+  sqlDescribeParam :: Ptr CStmt 
+                   -> #{type SQLUSMALLINT} -- ^ parameter number
+                   -> Ptr #{type SQLSMALLINT} -- ^ data type ptr
+                   -> Ptr #{type SQLUINTEGER} -- ^ parameter size ptr
+                   -> Ptr #{type SQLSMALLINT} -- ^ dec digits ptr
+                   -> Ptr #{type SQLSMALLINT} -- ^ nullable ptr
+                   -> IO #{type SQLRETURN}
