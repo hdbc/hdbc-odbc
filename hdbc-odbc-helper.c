@@ -88,6 +88,7 @@ void *getSqlOvOdbc3(void) {
 }
 
 SQLRETURN enableAutoCommit(SQLHDBC conn) {
-  SQLUINTEGER value = 1;
-  return SQLSetConnectAttr(conn, SQL_ATTR_AUTOCOMMIT, &value, 0);
+  return SQLSetConnectAttr(conn, SQL_ATTR_AUTOCOMMIT, 
+                           (SQLPOINTER) SQL_AUTOCOMMIT_OFF,
+                           SQL_IS_UINTEGER);
 }
