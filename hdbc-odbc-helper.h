@@ -10,11 +10,11 @@ typedef struct TAG_finalizeonce {
 
 extern finalizeonce *wrapobj(void *obj);
 
-extern void PQfinish_app(finalizeonce *conn);
-extern void PQfinish_finalizer(finalizeonce *conn);
+extern void sqlFreeHandleEnv_app(finalizeonce *res);
+extern void sqlFreeHandleEnv_finalizer(finalizeonce *res);
 
-extern void PQclear_app(finalizeonce *res);
-extern void PQclear_finalizer(finalizeonce *res);
+extern SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res);
+extern void sqlFreeHandleDbc_finalizer(finalizeonce *res);
 
 extern void sqlFreeHandleSth_app(finalizeonce *res);
 extern void sqlFreeHandleSth_finalizer(finalizeonce *res);

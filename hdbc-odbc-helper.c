@@ -48,18 +48,40 @@ void sqlFreeHandleSth_finalizer(finalizeonce *res) {
   free(res);
 }
 
-void sqlFreeHandleDbc_app(finalizeonce *res) {
+SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
+  SQLRETURN retval;
   if (res->isfinalized)
     return;
-  SQLDisconnect((SQLHDBC) (res->encapobj));
-  SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+  retval = SQLDisconnect((SQLHDBC) (res->encapobj));
+  if (SQL_SUCCEEDED(retval)) {
+    SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+    res->isfinalized = 1;
+  }
+  return retval;
+}
+
+void sqlFreeHandleDbc_finalizer(finalizeonce *res) {
+  /* Don't use sqlFreeHandleDbc_app here, because we want to clear it out
+     regardless of the success or failues of SQLDisconnect. */
+  if (! (res->isfinalized)) {
+    SQLDisconnect((SQLHDBC) (res->encapobj));
+    SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+  }
+  free(res);
+}
+
+void sqlFreeHandleEnv_app(finalizeonce *res) {
+  if (res->isfinalized)
+    return;
+  SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->encapobj));
   res->isfinalized = 1;
 }
 
-void sqlFreeHandleSth_finalizer(finalizeonce *res) {
-  sqlFreeHandleSth_app(res);
+void sqlFreeHandleEnv_finalizer(finalizeonce *res) {
+  sqlFreeHandleEnv_app(res);
   free(res);
 }
+
 
 void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;

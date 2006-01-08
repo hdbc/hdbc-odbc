@@ -132,10 +132,10 @@ foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
   wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleEnv_fptr"
+foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleEnv_finalizer"
   sqlFreeHandleEnv_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_fptr"
+foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
   sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
