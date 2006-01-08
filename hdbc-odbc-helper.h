@@ -6,9 +6,11 @@ extern SQLRETURN sqlFreeHandleEnv(SQLHANDLE hdl);
 typedef struct TAG_finalizeonce {
   void *encapobj;
   int isfinalized;
+  void *extrainfo;
 } finalizeonce;
 
 extern finalizeonce *wrapobj(void *obj);
+extern finalizeonce *wrapobj_extra(void *obj, void *extra);
 
 extern void sqlFreeHandleEnv_app(finalizeonce *res);
 extern void sqlFreeHandleEnv_finalizer(finalizeonce *res);

@@ -21,6 +21,4 @@ data CStmt = CStmt
 type WrappedCStmt = Ptr CStmt
 type Stmt = ForeignPtr WrappedCStmt
 
-data ConnInfo = ConnInfo {conn :: Conn,
-                          env :: Env}
 

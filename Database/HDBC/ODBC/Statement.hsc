@@ -47,13 +47,13 @@ l _ = return ()
 data SState = 
     SState { stomv :: MVar (Maybe Stmt),
              nextrowmv :: MVar (CInt), -- -1 for no next row (empty); otherwise, next row to read.
-             dbo :: ConnInfo,
+             dbo :: Conn,
              squery :: String,
              colnamemv :: MVar [String]}
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
-newSth :: ConnInfo -> String -> IO Statement               
+newSth :: Conn -> String -> IO Statement               
 newSth indbo query = 
     do l "in newSth"
        newstomv <- newMVar Nothing
@@ -71,7 +71,7 @@ newSth indbo query =
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
-fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
+fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        withCStringLen (squery sstate) $ \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
     do l "in fexecute"

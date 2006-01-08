@@ -32,6 +32,14 @@ finalizeonce *wrapobj(void *obj) {
   }
   newobj->isfinalized = 0;
   newobj->encapobj = obj;
+  newobj->extrainfo = NULL;
+  return newobj;
+}
+
+finalizeonce *wrapobj_extra(void *obj, void *extra) {
+  finalizeonce *newobj = wrapobj(obj);
+  if (newobj != NULL)
+    newobj->extrainfo = extra;
   return newobj;
 }
   
@@ -55,6 +63,7 @@ SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
   retval = SQLDisconnect((SQLHDBC) (res->encapobj));
   if (SQL_SUCCEEDED(retval)) {
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+    SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
     res->isfinalized = 1;
   }
   return retval;
@@ -66,22 +75,10 @@ void sqlFreeHandleDbc_finalizer(finalizeonce *res) {
   if (! (res->isfinalized)) {
     SQLDisconnect((SQLHDBC) (res->encapobj));
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+    SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
   }
   free(res);
 }
-
-void sqlFreeHandleEnv_app(finalizeonce *res) {
-  if (res->isfinalized)
-    return;
-  SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->encapobj));
-  res->isfinalized = 1;
-}
-
-void sqlFreeHandleEnv_finalizer(finalizeonce *res) {
-  sqlFreeHandleEnv_app(res);
-  free(res);
-}
-
 
 void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;

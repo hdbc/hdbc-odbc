@@ -50,8 +50,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                                   nullPtr -- #{const SQL_NULL_HANDLE}
                                    (castPtr penvptr)
             envptr <- peek penvptr 
-            wrappedenvptr <- wrapenv envptr
-            fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr wrappedenvptr
+
             checkError "connectODBC/alloc env" (EnvHandle envptr) rc1
             sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
                              (getSqlOvOdbc3) 0
@@ -62,7 +61,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                           >>= checkError "connectODBC/alloc dbc"
                                   (EnvHandle envptr)
             dbcptr <- peek pdbcptr
-            wrappeddbcptr <- wrapconn dbcptr
+            wrappeddbcptr <- wrapconn dbcptr envptr
             fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
 
             -- Now connect.
@@ -71,24 +70,23 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                              #{const SQL_DRIVER_COMPLETE}
                               >>= checkError "connectODBC/sqlDriverConnect" 
                                   (DbcHandle dbcptr)
-            mkConn args fenvptr fdbcptr
+            mkConn args fdbcptr
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Env -> Conn -> IO Connection
-mkConn args ienv iconn = withConn iconn $ \cconn -> 
+mkConn :: String -> Conn -> IO Connection
+mkConn args iconn = withConn iconn $ \cconn -> 
     do let protover = "FIXME"
        let serverver = "FIXME"
        let clientver = "FIXME"
-       let conninfo = ConnInfo {conn = iconn, env = ienv}
        enableAutoCommit cconn
          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
        return $ Connection {
-                            disconnect = fdisconnect conninfo,
-                            commit = fcommit conninfo,
-                            rollback = frollback conninfo,
-                            run = frun conninfo,
-                            prepare = newSth conninfo,
+                            disconnect = fdisconnect iconn,
+                            commit = fcommit iconn,
+                            rollback = frollback iconn,
+                            run = frun iconn,
+                            prepare = newSth iconn,
                             clone = connectODBC args,
                             -- FIXME: add clone
                             hdbcDriverName = "odbc",
@@ -103,25 +101,25 @@ mkConn args ienv iconn = withConn iconn $ \cconn ->
 -- Guts here
 --------------------------------------------------
 
-frun o query args =
-    do sth <- newSth o query
+frun conn query args =
+    do sth <- newSth conn query
        res <- execute sth args
        finish sth
        return res
 
-fcommit conninfo = withConn (conn conninfo) $ \cconn ->
+fcommit iconn = withConn iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_COMMIT}
     >>= checkError "sqlEndTran commit" (DbcHandle cconn)
 
-frollback conninfo = withConn (conn conninfo) $ \cconn ->
+frollback iconn = withConn iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
     >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
 
-fgettables conninfo = fail "getTables not yet supported in ODBC"
+fgettables iconn = fail "getTables not yet supported in ODBC"
     
 
-fdisconnect conninfo  = withRawConn (conn conninfo) $ \rawconn -> 
-                        withConn (conn conninfo) $ \llconn ->
+fdisconnect iconn  = withRawConn iconn $ \rawconn -> 
+                        withConn iconn $ \llconn ->
    sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (DbcHandle $ llconn)
 
 foreign import ccall unsafe "sql.h SQLAllocHandle"
@@ -131,8 +129,8 @@ foreign import ccall unsafe "sql.h SQLAllocHandle"
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
   wrapenv :: Ptr CEnv -> IO (Ptr WrappedCEnv)
 
-foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
-  wrapconn :: Ptr CConn -> IO (Ptr WrappedCConn)
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj_extra"
+  wrapconn :: Ptr CConn -> Ptr CEnv -> IO (Ptr WrappedCConn)
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleEnv_finalizer"
   sqlFreeHandleEnv_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
