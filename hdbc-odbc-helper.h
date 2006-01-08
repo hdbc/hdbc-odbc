@@ -20,3 +20,4 @@ extern void sqlFreeHandleSth_app(finalizeonce *res);
 extern void sqlFreeHandleSth_finalizer(finalizeonce *res);
 
 extern SQLINTEGER nullData;
+extern void *getSqlOvOdbc3(void);

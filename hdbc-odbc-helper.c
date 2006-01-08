@@ -1,4 +1,5 @@
 #include <sql.h>
+#include <sqlext.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "hdbc-odbc-helper.h"
@@ -34,18 +35,6 @@ finalizeonce *wrapobj(void *obj) {
   return newobj;
 }
   
-void PQfinish_app(finalizeonce *conn) {
-  if (conn->isfinalized)
-    return;
-  PQfinish((PGconn *) (conn->encapobj));
-  conn->isfinalized = 1;
-}
-
-void PQfinish_finalizer(finalizeonce *conn) {
-  PQfinish_app(conn);
-  free(conn);
-}
-
 void sqlFreeHandleSth_app(finalizeonce *res) {
   if (res->isfinalized)
     return;
@@ -59,3 +48,6 @@ void sqlFreeHandleSth_finalizer(finalizeonce *res) {
   free(res);
 }
 
+void *getSqlOvOdbc3(void) {
+  return (void *)SQL_OV_ODBC3;
+}
