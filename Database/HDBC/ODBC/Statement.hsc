@@ -95,8 +95,8 @@ fexecute sstate args = withConn (conn $ dbo sstate) $ \cconn ->
        rc <- getNumResultCols sthptr
        
        case rc of
-         0 -> do sqlFreeHandleSth_app wrappedsthptr
-                 rowcount <- getSqlRowCount sthptr
+         0 -> do rowcount <- getSqlRowCount sthptr
+                 sqlFreeHandleSth_app wrappedsthptr
                  swapMVar (colnamemv sstate) []
                  touchForeignPtr fsthptr
                  return (fromIntegral rowcount)
@@ -166,7 +166,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                        else do l "getting stuff"
                                ncols <- getNumResultCols cstmt
                                res <- mapM (getCol cstmt ) 
-                                      [0..(ncols - 1)]
+                                      [1..ncols]
                                return (stmt, (nextrow + 1, Just res))
           getCol cstmt icol = alloca $ \psize ->
              do sqlDescribeCol cstmt icol nullPtr 0 nullPtr nullPtr
