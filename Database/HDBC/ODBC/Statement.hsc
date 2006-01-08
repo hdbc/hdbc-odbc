@@ -114,11 +114,12 @@ getNumResultCols sthptr = alloca $ \pcount ->
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
-    do sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
-                      nullPtr >>= checkError ("bindcol/describe " 
-                                              ++ show icol ++ ": " ++ 
-                                              show arg)
-                                  (StmtHandle sthptr)
+    do rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
+                      nullPtr
+       when (sqlSucceeded rc1 == 0) $ -- Some drivers don't support that call
+          do poke pdtype #{const SQL_CHAR}
+             poke pcolsize 0
+             poke pdecdigits 0
        coltype <- peek pdtype
        colsize <- peek pcolsize
        decdigits <- peek pdecdigits
