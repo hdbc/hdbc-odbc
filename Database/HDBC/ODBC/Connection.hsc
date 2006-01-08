@@ -84,28 +84,25 @@ mkConn args ienv iconn = withConn iconn $ \cconn ->
        with 1 $ \p ->
          sqlSetConnectAttr cconn #{const SQL_ATTR_AUTOCOMMIT} p 0
          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
-       begin_transaction conninfo
        return $ Connection {
                             disconnect = fdisconnect conninfo,
                             commit = fcommit conninfo,
                             rollback = frollback conninfo,
                             run = frun conninfo,
                             prepare = newSth conninfo,
+                            clone = connectODBC args,
                             -- FIXME: add clone
                             hdbcDriverName = "odbc",
                             hdbcClientVer = clientver,
                             proxiedClientName = "FIXME",
                             proxiedClientVer = show protover,
-                            dbServerVer = show serverver
-                            --getTables = fgetTables iconn
+                            dbServerVer = show serverver,
+                            getTables = fgettables iconn
                            }
 
 --------------------------------------------------
 -- Guts here
 --------------------------------------------------
-
-begin_transaction :: ConnInfo -> IO ()
-begin_transaction o = frun o "BEGIN" [] >> return ()
 
 frun o query args =
     do sth <- newSth o query
@@ -113,10 +110,16 @@ frun o query args =
        finish sth
        return res
 
-fcommit o = do frun o "COMMIT" []
-               begin_transaction o
-frollback o =  do frun o "ROLLBACK" []
-                  begin_transaction o
+fcommit conninfo = withConn (conn conninfo) $ \cconn ->
+    sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_COMMIT}
+    >>= checkError "sqlEndTran commit" (DbcHandle cconn)
+
+frollback conninfo = withConn (conn conninfo) $ \cconn ->
+    sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
+    >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
+
+fgettables conninfo = fail "getTables not yet supported in ODBC"
+    
 
 fdisconnect conninfo  = withRawConn (conn conninfo) $ \rawconn -> 
                         withConn (conn conninfo) $ \llconn ->
@@ -158,3 +161,7 @@ foreign import ccall unsafe "hdbc-odbc-helper.h SQLSetConnectAttr"
   sqlSetConnectAttr :: Ptr CConn -> #{type SQLINTEGER} 
                     -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
                     -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLEndTran"
+  sqlEndTran :: #{type SQLSMALLINT} -> Ptr CConn -> #{type SQLSMALLINT}
+             -> IO #{type SQLRETURN}

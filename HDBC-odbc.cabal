@@ -1,4 +1,4 @@
-Extra-Libraries: pq
+Extra-Libraries: odbc
 include-dirs: .
 -- extra-lib-dirs: 
 Name: HDBC-odbc
