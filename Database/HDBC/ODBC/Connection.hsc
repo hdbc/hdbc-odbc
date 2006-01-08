@@ -47,14 +47,14 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                    alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
          do -- Create the Environment Handle
             rc1 <- sqlAllocHandle #{const SQL_HANDLE_ENV}
-                                  #{const SQL_NULL_HANDLE}
+                                  nullPtr -- #{const SQL_NULL_HANDLE}
                                    (castPtr penvptr)
             envptr <- peek penvptr 
             wrappedenvptr <- wrapenv envptr
             fenvptr <- newForeignPtr sqlFreeHandleEnv_ptr wrappedenvptr
             checkError "connectODBC/alloc env" (EnvHandle envptr) rc1
             sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
-                              #{const SQL_OV_ODBC3} 0
+                             (getSqlOvOdbc3) 0
 
             -- Create the DBC handle.
             sqlAllocHandle #{const SQL_HANDLE_DBC} (castPtr envptr) 
@@ -140,10 +140,13 @@ foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
 
 foreign import ccall unsafe "sql.h SQLSetEnvAttr"
   sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
-                   CString -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
+                   Ptr () -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "sql.h SQLDriverConnect"
   sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
                    -> CString -> #{type SQLSMALLINT}
                    -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
                    -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "hdbc-odbc-helper.h getSqlOvOdbc3"
+  getSqlOvOdbc3 :: Ptr ()
