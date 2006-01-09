@@ -167,6 +167,8 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                                ffinish cmstmt
                                return (Nothing, ((-1), Nothing))
                        else do l "getting stuff"
+                               sqlFetch cstmt >>=
+                                     checkError "sqlFetch" (StmtHandle cstmt)
                                ncols <- getNumResultCols cstmt
                                res <- mapM (getCol cstmt ) 
                                       [1..ncols]
@@ -177,6 +179,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                                >>= checkError "sqlDescribeCol" 
                                        (StmtHandle cstmt)
                 size <- peek psize
+                l $ "colsize: " ++ show size
                 let bufsize = size + 127 -- Try to give extra space
                 alloca $ \plen -> 
                  allocaBytes (fromIntegral bufsize + 1) $ \cs ->
@@ -187,6 +190,7 @@ ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
                         #{const SQL_NULL_DATA} -> return SqlNull
                         #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
                         len -> do s <- peekCStringLen (cs, fromIntegral len)
+                                  l $ "col is: " ++ s
                                   return (SqlString s)
 
 
@@ -288,3 +292,6 @@ foreign import ccall unsafe "sql.h SQLDescribeParam"
                    -> Ptr #{type SQLSMALLINT} -- ^ dec digits ptr
                    -> Ptr #{type SQLSMALLINT} -- ^ nullable ptr
                    -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLFetch"
+  sqlFetch :: Ptr CStmt -> IO #{type SQLRETURN}
