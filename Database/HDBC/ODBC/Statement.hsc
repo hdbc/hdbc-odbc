@@ -88,8 +88,10 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
        cargsraw <- zipWithM (bindCol sthptr) args [1..]
        let cargs = catMaybes cargsraw
 
-       sqlExecute sthptr >>=
-            checkError "execute execute" (StmtHandle sthptr)
+       r <- sqlExecute sthptr
+       case r of
+         #{const SQL_NO_DATA} -> return () -- Update that did nothing
+         x -> checkError "execute execute" (StmtHandle sthptr) x
 
        mapM (\(a, b) -> touchForeignPtr a >> touchForeignPtr b) cargs
        rc <- getNumResultCols sthptr
