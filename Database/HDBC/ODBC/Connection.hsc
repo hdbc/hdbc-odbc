@@ -115,9 +115,6 @@ frollback iconn = withConn iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
     >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
 
-fgettables iconn = fail "getTables not yet supported in ODBC"
-    
-
 fdisconnect iconn  = withRawConn iconn $ \rawconn -> 
                         withConn iconn $ \llconn ->
    sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (DbcHandle $ llconn)

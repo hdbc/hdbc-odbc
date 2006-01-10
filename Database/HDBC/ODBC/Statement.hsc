@@ -53,21 +53,49 @@ data SState =
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
-newSth :: Conn -> String -> IO Statement               
-newSth indbo query = 
-    do l "in newSth"
-       newstomv <- newMVar Nothing
+newSState :: Conn -> String -> IO SState
+newSState indbo query =
+    do newstomv <- newMVar Nothing
        newnextrowmv <- newMVar (-1)
        newcolnamemv <- newMVar []
-       let sstate = SState {stomv = newstomv, nextrowmv = newnextrowmv,
-                            dbo = indbo, squery = query,
-                            colnamemv = newcolnamemv}
-       return $ Statement {execute = fexecute sstate,
+       return SState {stomv = newstomv, nextrowmv = newnextrowmv,
+                      dbo = indbo, squery = query,
+                      colnamemv = newcolnamemv}
+
+wrapStmt :: SState -> Statement
+wrapStmt sstate =
+    Statement {execute = fexecute sstate,
                            executeMany = fexecutemany sstate,
                            finish = public_ffinish sstate,
                            fetchRow = ffetchrow sstate,
-                           originalQuery = query,
+                           originalQuery = (squery sstate),
                            getColumnNames = readMVar (colnamemv sstate)}
+
+newSth :: Conn -> String -> IO Statement               
+newSth indbo query = 
+    do l "in newSth"
+       sstate <- newSState indbo query
+       return $ wrapStmt sstate
+
+fgettables iconn = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
+                   withConn iconn $ \cconn -> 
+                   withCString "" $ \emptycs ->
+    do rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
+       sthptr <- peek psthptr
+       wrappedsthptr <- wrapstmt sthptr
+       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
+       checkError "fgettables allocHandle" (DbcHandle cconn) rc1
+
+       simpleSqlTables sthptr >>=
+                       checkError "gettables simpleSqlTables" 
+                       (StmtHandle sthptr)
+
+       sstate <- newSState iconn ""
+       swapMVar (stomv sstate) (Just fsthptr)
+       swapMVar (nextrowmv sstate) 0
+       let sth = wrapStmt sstate
+       results <- fetchAllRows sth
+       return $ map (\x -> fromSql (x !! 2)) results
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
@@ -324,3 +352,6 @@ foreign import ccall unsafe "sql.h SQLDescribeParam"
 
 foreign import ccall unsafe "sql.h SQLFetch"
   sqlFetch :: Ptr CStmt -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlTables"
+  simpleSqlTables :: Ptr CStmt -> IO #{type SQLRETURN}
