@@ -1,5 +1,5 @@
-hdbc-postgresql (0.99.0.0) unstable; urgency=low
+hdbc-odbc (0.99.0.0) unstable; urgency=low
 
   * Initial Release.
 
- -- John Goerzen <jgoerzen@complete.org>  Tue, 27 Dec 2005 16:57:21 -0600
+ -- John Goerzen <jgoerzen@complete.org>  Mon, 09 Jan 2006 05:31:21 -0600
