@@ -113,5 +113,5 @@ SQLRETURN enableAutoCommit(SQLHDBC conn) {
 }
 
 SQLRETURN simpleSqlTables(SQLHSTMT stmt) {
-  SQLTables(stmt, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+  return SQLTables(stmt, NULL, 0, NULL, 0, "%", 1, "TABLE", 5);
 }
