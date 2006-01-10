@@ -111,3 +111,7 @@ SQLRETURN enableAutoCommit(SQLHDBC conn) {
                            (SQLPOINTER) SQL_AUTOCOMMIT_OFF,
                            SQL_IS_UINTEGER);
 }
+
+SQLRETURN simpleSqlTables(SQLHSTMT stmt) {
+  SQLTables(stmt, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+}
