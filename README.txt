@@ -1,21 +1,26 @@
 Welcome to HDBC, Haskell Database Connectivity.
 
-This package provides a database backend driver for PostgreSQL.
+This package provides a database backend driver for ODBC.  You should
+be able to use any ODBC front-end with it.
 
 Please see HDBC itself for documentation on use.  If you don't already
 have it, you can browse this documentation at
 http://darcs.complete.org/hdbc/doc/index.html.
 
-This package provides one function in module Database.HDBC.PostgreSQL:
+This package provides one function in module Database.HDBC.ODBC:
 
-{- | Connect to a PostgreSQL server.
+{- | Connect to an ODBC server.
 
-See <http://www.postgresql.org/docs/8.1/static/libpq.html#LIBPQ-CONNECT> for the meaning
-of the connection string. -}
-connectPostgreSQL :: String -> IO Connection
+For information on the meaning of the passed string, please see:
 
-An example would be:
-dbh <- connectPostgreSQL "host=localhost dbname=testdb user=foo"
+<http://msdn.microsoft.com/library/default.asp?url=/library/en-us/odbc/htm/odbcsqldrivers.asp>
+
+An example string is:
+
+>"DSN=hdbctest1"
+
+-}
+connectODBC :: String -> IO Connection
 
 DIFFERENCES FROM HDBC STANDARD
 ------------------------------
@@ -38,10 +43,10 @@ INSTALLATION
 
 The steps to install are:
 
-1) Examine HDBC-postgresql.cabal and edit the include-dirs
-   line to point to your local PostgreSQL installation.  If necessary,
+1) Examine HDBC-odbc.cabal and edit the include-dirs
+   line to point to your local ODBC installation.  If necessary,
    uncomment and edit the extra-lib-dirs line to point to your
-   local PostgreSQL installation.
+   local ODBC installation.
 
 2) ghc --make -o setup Setup.lhs
 
@@ -60,11 +65,14 @@ To use with hugs, you'll want to use hugs -98.
 
 To use with GHC, you'll want to use:
 
- -package HDBC -package HDBC-postgresql
+ -package HDBC -package HDBC-odbc
 
 Or, with Cabal, use:
 
-  Build-Depends: HDBC>=0.99.0, HDBC-postgresql
+  Build-Depends: HDBC>=0.99.0, HDBC-odbc
+
+This package has been tested with unixODBC.
 
 -- John Goerzen
-   December 2005
+   January 2006
+

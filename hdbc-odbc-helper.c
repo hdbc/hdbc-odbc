@@ -75,7 +75,7 @@ SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
           res->encapobj, res->isfinalized);
 #endif
   if (res->isfinalized)
-    return;
+    return 0;
   retval = SQLDisconnect((SQLHDBC) (res->encapobj));
   if (SQL_SUCCEEDED(retval)) {
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
@@ -106,7 +106,7 @@ void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;
 }
 
-SQLRETURN enableAutoCommit(SQLHDBC conn) {
+SQLRETURN disableAutoCommit(SQLHDBC conn) {
   return SQLSetConnectAttr(conn, SQL_ATTR_AUTOCOMMIT, 
                            (SQLPOINTER) SQL_AUTOCOMMIT_OFF,
                            SQL_IS_UINTEGER);

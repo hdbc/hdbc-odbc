@@ -24,5 +24,5 @@ extern void sqlFreeHandleSth_finalizer(finalizeonce *res);
 extern SQLINTEGER nullData;
 extern void *getSqlOvOdbc3(void);
 
-extern SQLRETURN enableAutoCommit(SQLHDBC conn);
+extern SQLRETURN disableAutoCommit(SQLHDBC conn);
 extern SQLRETURN simpleSqlTables(SQLHSTMT stmt);

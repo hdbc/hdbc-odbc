@@ -40,6 +40,14 @@ import Data.Int
 
 {- | Connect to an ODBC server.
 
+For information on the meaning of the passed string, please see:
+
+<http://msdn.microsoft.com/library/default.asp?url=/library/en-us/odbc/htm/odbcsqldrivers.asp>
+
+An example string is:
+
+>"DSN=hdbctest1"
+
 -}
 connectODBC :: String -> IO Connection
 connectODBC args = withCStringLen args $ \(cs, cslen) -> 
@@ -100,7 +108,7 @@ mkConn args iconn = withConn iconn $ \cconn ->
        len <- peek plen
        clientname <- peekCStringLen (pbuf, fromIntegral len)
 
-       enableAutoCommit cconn
+       disableAutoCommit cconn
          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
        return $ Connection {
                             disconnect = fdisconnect iconn,
@@ -150,9 +158,6 @@ foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj_extra"
   wrapconn :: Ptr CConn -> Ptr CEnv -> IO (Ptr WrappedCConn)
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleEnv_finalizer"
-  sqlFreeHandleEnv_ptr :: FunPtr (Ptr WrappedCEnv -> IO ())
-
 foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
   sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())
 
@@ -181,8 +186,8 @@ foreign import ccall unsafe "sql.h SQLEndTran"
   sqlEndTran :: #{type SQLSMALLINT} -> Ptr CConn -> #{type SQLSMALLINT}
              -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "sql.h enableAutoCommit"
-  enableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
+foreign import ccall unsafe "hdbc-odbc-helper.h disableAutoCommit"
+  disableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "sql.h SQLGetInfo"
   sqlGetInfo :: Ptr CConn -> #{type SQLUSMALLINT} -> Ptr () ->
