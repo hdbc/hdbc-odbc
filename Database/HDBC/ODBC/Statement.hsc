@@ -85,20 +85,24 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
        sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
             checkError "execute prepare" (StmtHandle sthptr)
 
-       cargsraw <- zipWithM (bindCol sthptr) args [1..]
-       let cargs = catMaybes cargsraw
+       argsToFree <- zipWithM (bindCol sthptr) args [1..]
 
        r <- sqlExecute sthptr
+            
+       -- Our bound columns must be valid through this point,
+       -- but we don't care after here.
+       mapM (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
+                (concat argsToFree) 
+
        case r of
          #{const SQL_NO_DATA} -> return () -- Update that did nothing
          x -> checkError "execute execute" (StmtHandle sthptr) x
 
-       mapM (\(a, b) -> touchForeignPtr a >> touchForeignPtr b) cargs
        rc <- getNumResultCols sthptr
        
        case rc of
          0 -> do rowcount <- getSqlRowCount sthptr
-                 sqlFreeHandleSth_app wrappedsthptr
+                 ffinish fsthptr
                  swapMVar (colnamemv sstate) []
                  touchForeignPtr fsthptr
                  return (fromIntegral rowcount)
@@ -113,12 +117,24 @@ getNumResultCols sthptr = alloca $ \pcount ->
                                           (StmtHandle sthptr)
        peek pcount
     
+-- Bind a parameter column before execution.
+
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
+{- We have to start by getting the SQL type of the column so we can
+   send the correct type back to the server.  Sigh.  If the ODBC
+   backend won't tell us the type, we fake it.
+
+   We've got an annoying situation with error handling.  Must make
+   sure that all data is freed, but if there's an error, we have to raise
+   it and the caller never gets to freed the allocated data to-date.
+   So, make sure we either free of have foreignized everything before
+   control passes out of this function. -}
+
     do rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
                       nullPtr
-       when (sqlSucceeded rc1 == 0) $ -- Some drivers don't support that call
+       when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
              poke pcolsize 0
              poke pdecdigits 0
@@ -126,24 +142,35 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
        colsize <- peek pcolsize
        decdigits <- peek pdecdigits
        case arg of
-         SqlNull -> do rc1 <- sqlBindParameter sthptr (fromIntegral icol)
+         SqlNull -> -- NULL parameter, bind it as such.
+                    do rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
                               #{const SQL_CHAR} coltype colsize decdigits
                               nullPtr 0 nullData
                        checkError ("bindparameter " ++ show icol)
-                                  (StmtHandle sthptr) rc1
-                       return Nothing
-         x -> do (csptr, cslen) <- newCStringLen (fromSql x)
-                 with (fromIntegral cslen) $ \pcslen -> 
-                  do fcsptr <- newForeignPtr finalizerFree csptr
-                     fcslenptr <- newForeignPtr finalizerFree pcslen
-                     sqlBindParameter sthptr (fromIntegral icol)
+                                      (StmtHandle sthptr) rc2
+                       return []
+         x -> do -- Otherwise, we have to allocate RAM, make sure it's
+                 -- not freed now, and pass it along...
+                  (csptr, cslen) <- newCStringLen (fromSql x)
+                  do pcslen <- malloc 
+                     poke pcslen (fromIntegral cslen)
+                     rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
                        #{const SQL_CHAR} coltype colsize decdigits
                        csptr (fromIntegral cslen + 1) pcslen
-                       >>= checkError ("bindparameter " ++ show icol) 
-                           (StmtHandle sthptr)
-                     return (Just (fcsptr, fcslenptr))
+                     if isOK rc2
+                        then do -- We bound it.  Make foreignPtrs and return.
+                                fp1 <- newForeignPtr finalizerFree pcslen
+                                fp2 <- newForeignPtr finalizerFree csptr
+                                return [(fp1, fp2)]
+                        else do -- Binding failed.  Free the data and raise
+                                -- error.
+                                free pcslen
+                                free csptr
+                                checkError ("bindparameter " ++ show icol) 
+                                               (StmtHandle sthptr) rc2
+                                return [] -- will never get hit
        
 getSqlRowCount cstmt = alloca $ \prows ->
      do sqlRowCount cstmt prows >>= checkError "SQLRowCount" (StmtHandle cstmt)

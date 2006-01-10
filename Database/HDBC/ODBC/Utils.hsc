@@ -125,6 +125,8 @@ genericUnwrap fptr action = withForeignPtr fptr (\structptr ->
     do objptr <- #{peek finalizeonce, encapobj} structptr
        action objptr
                                                 )
+isOK :: #{type SQLRETURN} -> Bool
+isOK r = sqlSucceeded r /= 0
 
 foreign import ccall unsafe "sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt

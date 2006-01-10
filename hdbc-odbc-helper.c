@@ -27,12 +27,15 @@ finalizeonce *wrapobj(void *obj) {
   finalizeonce *newobj;
   newobj = malloc(sizeof(finalizeonce));
   if (newobj == NULL) {
-    fprintf(stderr, "HDBC: could not allocate wrapper!\n");
+    fprintf(stderr, "\nHDBC: could not allocate wrapper!\n");
     return NULL;
   }
   newobj->isfinalized = 0;
   newobj->encapobj = obj;
   newobj->extrainfo = NULL;
+#ifdef HDBC_DEBUG
+  fprintf(stderr, "\nWrapped %p at %p\n", obj, newobj);
+#endif
   return newobj;
 }
 
@@ -44,20 +47,33 @@ finalizeonce *wrapobj_extra(void *obj, void *extra) {
 }
   
 void sqlFreeHandleSth_app(finalizeonce *res) {
+#ifdef HDBC_DEBUG
+  fprintf(stderr, "\nApp cleanup of sth %p requested: %d\n", 
+          res->encapobj, res->isfinalized);
+#endif
   if (res->isfinalized)
     return;
   SQLCloseCursor((SQLHSTMT) (res->encapobj));
   SQLFreeHandle(SQL_HANDLE_STMT, (SQLHANDLE) (res->encapobj));
   res->isfinalized = 1;
+  res->encapobj = NULL;
 }
 
 void sqlFreeHandleSth_finalizer(finalizeonce *res) {
+#ifdef HDBC_DEBUG
+  fprintf(stderr, "\nFinalizer cleanup of sth %p requested: %d\n", 
+          res->encapobj, res->isfinalized);
+#endif
   sqlFreeHandleSth_app(res);
   free(res);
 }
 
 SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
   SQLRETURN retval;
+#ifdef HDBC_DEBUG
+  fprintf(stderr, "\nApp cleanup of dbc %p requested: %d\n", 
+          res->encapobj, res->isfinalized);
+#endif
   if (res->isfinalized)
     return;
   retval = SQLDisconnect((SQLHDBC) (res->encapobj));
@@ -65,17 +81,23 @@ SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
     SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
     res->isfinalized = 1;
+    res->encapobj = NULL;
   }
   return retval;
 }
 
 void sqlFreeHandleDbc_finalizer(finalizeonce *res) {
+#ifdef HDBC_DEBUG
+  fprintf(stderr, "\nFinalizer cleanup of dbc %p requested: %d\n", 
+          res->encapobj, res->isfinalized);
+#endif
   /* Don't use sqlFreeHandleDbc_app here, because we want to clear it out
      regardless of the success or failues of SQLDisconnect. */
   if (! (res->isfinalized)) {
     SQLDisconnect((SQLHDBC) (res->encapobj));
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
     SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
+    res->encapobj = NULL;
   }
   free(res);
 }
