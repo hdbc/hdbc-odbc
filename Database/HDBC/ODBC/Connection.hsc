@@ -76,9 +76,30 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
 -- for clone.
 mkConn :: String -> Conn -> IO Connection
 mkConn args iconn = withConn iconn $ \cconn -> 
-    do let protover = "FIXME"
-       let serverver = "FIXME"
-       let clientver = "FIXME"
+                    alloca $ \plen ->
+                    allocaBytes 128 $ \pbuf -> 
+    do 
+       
+       sqlGetInfo cconn #{const SQL_DBMS_VER} (castPtr pbuf) 127 plen
+         >>= checkError "sqlGetInfo SQL_DBMS_VER" (DbcHandle cconn)
+       len <- peek plen
+       serverver <- peekCStringLen (pbuf, fromIntegral len)
+
+       sqlGetInfo cconn #{const SQL_DRIVER_VER} (castPtr pbuf) 127 plen
+         >>= checkError "sqlGetInfo SQL_DRIVER_VER" (DbcHandle cconn)
+       len <- peek plen
+       proxiedclientver <- peekCStringLen (pbuf, fromIntegral len)
+
+       sqlGetInfo cconn #{const SQL_ODBC_VER} (castPtr pbuf) 127 plen
+         >>= checkError "sqlGetInfo SQL_ODBC_VER" (DbcHandle cconn)
+       len <- peek plen
+       clientver <- peekCStringLen (pbuf, fromIntegral len)
+
+       sqlGetInfo cconn #{const SQL_DBMS_NAME} (castPtr pbuf) 127 plen
+         >>= checkError "sqlGetInfo SQL_DBMS_NAME" (DbcHandle cconn)
+       len <- peek plen
+       clientname <- peekCStringLen (pbuf, fromIntegral len)
+
        enableAutoCommit cconn
          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
        return $ Connection {
@@ -91,9 +112,9 @@ mkConn args iconn = withConn iconn $ \cconn ->
                             -- FIXME: add clone
                             hdbcDriverName = "odbc",
                             hdbcClientVer = clientver,
-                            proxiedClientName = "FIXME",
-                            proxiedClientVer = show protover,
-                            dbServerVer = show serverver,
+                            proxiedClientName = clientname,
+                            proxiedClientVer = proxiedclientver,
+                            dbServerVer = serverver,
                             getTables = fgettables iconn
                            }
 
@@ -162,3 +183,8 @@ foreign import ccall unsafe "sql.h SQLEndTran"
 
 foreign import ccall unsafe "sql.h enableAutoCommit"
   enableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "sql.h SQLGetInfo"
+  sqlGetInfo :: Ptr CConn -> #{type SQLUSMALLINT} -> Ptr () ->
+                #{type SQLSMALLINT} -> Ptr #{type SQLSMALLINT} ->
+                IO #{type SQLRETURN}
