@@ -46,7 +46,6 @@ l _ = return ()
 
 data SState = 
     SState { stomv :: MVar (Maybe Stmt),
-             nextrowmv :: MVar (CInt), -- -1 for no next row (empty); otherwise, next row to read.
              dbo :: Conn,
              squery :: String,
              colnamemv :: MVar [String]}
@@ -56,9 +55,8 @@ data SState =
 newSState :: Conn -> String -> IO SState
 newSState indbo query =
     do newstomv <- newMVar Nothing
-       newnextrowmv <- newMVar (-1)
        newcolnamemv <- newMVar []
-       return SState {stomv = newstomv, nextrowmv = newnextrowmv,
+       return SState {stomv = newstomv, 
                       dbo = indbo, squery = query,
                       colnamemv = newcolnamemv}
 
@@ -92,9 +90,9 @@ fgettables iconn = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
 
        sstate <- newSState iconn ""
        swapMVar (stomv sstate) (Just fsthptr)
-       swapMVar (nextrowmv sstate) 0
        let sth = wrapStmt sstate
        results <- fetchAllRows sth
+       l (show results)
        return $ map (\x -> fromSql (x !! 2)) results
 
 {- For now, we try to just  handle things as simply as possible.
@@ -103,7 +101,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        withCStringLen (squery sstate) $ \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
     do l "in fexecute"
-       public_ffinish sstate    -- Sets nextrowmv to -1
+       public_ffinish sstate  
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
        wrappedsthptr <- wrapstmt sthptr
@@ -135,7 +133,6 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                  touchForeignPtr fsthptr
                  return (fromIntegral rowcount)
          colcount -> do fgetcolnames sthptr >>= swapMVar (colnamemv sstate)
-                        swapMVar (nextrowmv sstate) 0
                         swapMVar (stomv sstate) (Just fsthptr)
                         touchForeignPtr fsthptr
                         return 0
@@ -209,28 +206,23 @@ of each to see if it's NULL.  If it's not, fetch it as text and return that.
 -}
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow sstate = modifyMVar (nextrowmv sstate) dofetchrow
-    where dofetchrow (-1) = l "ffr -1" >> return ((-1), Nothing)
-          dofetchrow nextrow = modifyMVar (stomv sstate) $ \stmt -> 
+ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> 
              case stmt of
-               Nothing -> l "ffr nos" >> return (stmt, ((-1), Nothing))
+               Nothing -> l "ffr nos" >> return (stmt, Nothing)
                Just cmstmt -> withStmt cmstmt $ \cstmt ->
-                 do l $ "ffetchrow: " ++ show nextrow
-                    numrows <- getSqlRowCount cstmt
-                    l $ "numrows: " ++ show numrows
-                    if nextrow >= fromIntegral numrows
+                 do rc <- sqlFetch cstmt
+                    if rc == #{const SQL_NO_DATA}
                        then do l "no more rows"
                                -- Don't use public_ffinish here
                                ffinish cmstmt
-                               return (Nothing, ((-1), Nothing))
+                               return (Nothing, Nothing)
                        else do l "getting stuff"
-                               sqlFetch cstmt >>=
-                                     checkError "sqlFetch" (StmtHandle cstmt)
+                               checkError "sqlFetch" (StmtHandle cstmt) rc
                                ncols <- getNumResultCols cstmt
                                res <- mapM (getCol cstmt ) 
                                       [1..ncols]
-                               return (stmt, (nextrow + 1, Just res))
-          getCol cstmt icol = alloca $ \psize ->
+                               return (stmt, Just res)
+    where getCol cstmt icol = alloca $ \psize ->
              do sqlDescribeCol cstmt icol nullPtr 0 nullPtr nullPtr
                                psize nullPtr nullPtr
                                >>= checkError "sqlDescribeCol" 
@@ -268,7 +260,6 @@ fexecutemany sstate arglist =
 -- Finish and change state
 public_ffinish sstate = 
     do l "public_ffinish"
-       swapMVar (nextrowmv sstate) (-1)
        modifyMVar_ (stomv sstate) worker
     where worker Nothing = return Nothing
           worker (Just sth) = ffinish sth >> return Nothing
