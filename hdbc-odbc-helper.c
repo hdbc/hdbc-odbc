@@ -23,7 +23,9 @@ Yet we'd also like to be able to have a ForeignPtr finalize them.
 
 So, here's a little wrapper for things. */
 
-finalizeonce *wrapobj(void *obj) {
+void dbc_conditional_finalizer(finalizeonce *conn);
+
+finalizeonce *wrapobj(void *obj, finalizeonce *parentobj) {
   finalizeonce *newobj;
   newobj = malloc(sizeof(finalizeonce));
   if (newobj == NULL) {
@@ -31,16 +33,20 @@ finalizeonce *wrapobj(void *obj) {
     return NULL;
   }
   newobj->isfinalized = 0;
+  newobj -> refcount = 1;
   newobj->encapobj = obj;
   newobj->extrainfo = NULL;
+  newobj->parent = parentobj;
+  if (parentobj != NULL)
+    (parentobj->refcount)++;
 #ifdef HDBC_DEBUG
   fprintf(stderr, "\nWrapped %p at %p\n", obj, newobj);
 #endif
   return newobj;
 }
 
-finalizeonce *wrapobj_extra(void *obj, void *extra) {
-  finalizeonce *newobj = wrapobj(obj);
+finalizeonce *wrapobj_extra(void *obj, void *extra, finalizeonce *parentobj) {
+  finalizeonce *newobj = wrapobj(obj, parentobj);
   if (newobj != NULL)
     newobj->extrainfo = extra;
   return newobj;
@@ -65,6 +71,10 @@ void sqlFreeHandleSth_finalizer(finalizeonce *res) {
           res->encapobj, res->isfinalized);
 #endif
   sqlFreeHandleSth_app(res);
+  (res->refcount)--;            /* Not really important since this is never a 
+                                   parent */
+  (res->parent->refcount)--;
+  dbc_conditional_finalizer(res->parent);
   free(res);
 }
 
@@ -91,15 +101,23 @@ void sqlFreeHandleDbc_finalizer(finalizeonce *res) {
   fprintf(stderr, "\nFinalizer cleanup of dbc %p requested: %d\n", 
           res->encapobj, res->isfinalized);
 #endif
+  (res->refcount)--;
+  dbc_conditional_finalizer(res);
+}
+
+void dbc_conditional_finalizer(finalizeonce *res) {
+  if (res->refcount < 1) {
   /* Don't use sqlFreeHandleDbc_app here, because we want to clear it out
      regardless of the success or failues of SQLDisconnect. */
-  if (! (res->isfinalized)) {
-    SQLDisconnect((SQLHDBC) (res->encapobj));
-    SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
-    SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
-    res->encapobj = NULL;
+    if (! (res->isfinalized)) {
+      SQLDisconnect((SQLHDBC) (res->encapobj));
+      SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
+      SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
+      res->encapobj = NULL;
+      res->isfinalized = 1;
+    }
+    free(res);
   }
-  free(res);
 }
 
 void *getSqlOvOdbc3(void) {

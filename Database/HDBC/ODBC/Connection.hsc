@@ -23,6 +23,7 @@ module Database.HDBC.ODBC.Connection (connectODBC) where
 
 import Database.HDBC.Types
 import Database.HDBC
+import Database.HDBC.DriverUtils
 import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Statement
 import Foreign.C.Types
@@ -34,6 +35,7 @@ import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
 import Data.Int
+import Control.Concurrent.MVar
 
 #include <sql.h>
 #include <sqlext.h>
@@ -69,7 +71,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                           >>= checkError "connectODBC/alloc dbc"
                                   (EnvHandle envptr)
             dbcptr <- peek pdbcptr
-            wrappeddbcptr <- wrapconn dbcptr envptr
+            wrappeddbcptr <- wrapconn dbcptr envptr nullPtr
             fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
 
             -- Now connect.
@@ -87,7 +89,7 @@ mkConn args iconn = withConn iconn $ \cconn ->
                     alloca $ \plen ->
                     allocaBytes 128 $ \pbuf -> 
     do 
-       
+       children <- newMVar []
        sqlGetInfo cconn #{const SQL_DBMS_VER} (castPtr pbuf) 127 plen
          >>= checkError "sqlGetInfo SQL_DBMS_VER" (DbcHandle cconn)
        len <- peek plen
@@ -111,11 +113,11 @@ mkConn args iconn = withConn iconn $ \cconn ->
        disableAutoCommit cconn
          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
        return $ Connection {
-                            disconnect = fdisconnect iconn,
+                            disconnect = fdisconnect iconn children,
                             commit = fcommit iconn,
                             rollback = frollback iconn,
-                            run = frun iconn,
-                            prepare = newSth iconn,
+                            run = frun iconn children,
+                            prepare = newSth iconn children,
                             clone = connectODBC args,
                             -- FIXME: add clone
                             hdbcDriverName = "odbc",
@@ -130,8 +132,8 @@ mkConn args iconn = withConn iconn $ \cconn ->
 -- Guts here
 --------------------------------------------------
 
-frun conn query args =
-    do sth <- newSth conn query
+frun conn children query args =
+    do sth <- newSth conn children query
        res <- execute sth args
        finish sth
        return res
@@ -144,16 +146,19 @@ frollback iconn = withConn iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
     >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
 
-fdisconnect iconn  = withRawConn iconn $ \rawconn -> 
-                        withConn iconn $ \llconn ->
-   sqlFreeHandleDbc_app rawconn >>= checkError "disconnect" (DbcHandle $ llconn)
+fdisconnect iconn mchildren  = withRawConn iconn $ \rawconn -> 
+                               withConn iconn $ \llconn ->
+    do closeAllChildren mchildren
+       res <- sqlFreeHandleDbc_app rawconn
+       -- FIXME: will this checkError segfault?
+       checkError "disconnect" (DbcHandle $ llconn) res
 
 foreign import ccall unsafe "sql.h SQLAllocHandle"
   sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
                     Ptr () -> IO (#{type SQLRETURN})
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj_extra"
-  wrapconn :: Ptr CConn -> Ptr CEnv -> IO (Ptr WrappedCConn)
+  wrapconn :: Ptr CConn -> Ptr CEnv -> Ptr WrappedCConn -> IO (Ptr WrappedCConn)
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
   sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())

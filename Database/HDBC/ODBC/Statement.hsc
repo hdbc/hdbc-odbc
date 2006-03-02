@@ -21,6 +21,7 @@ Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
 module Database.HDBC.ODBC.Statement where
 import Database.HDBC.Types
 import Database.HDBC
+import Database.HDBC.DriverUtils
 import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Utils
 import Foreign.C.Types
@@ -69,18 +70,21 @@ wrapStmt sstate =
                            originalQuery = (squery sstate),
                            getColumnNames = readMVar (colnamemv sstate)}
 
-newSth :: Conn -> String -> IO Statement               
-newSth indbo query = 
+newSth :: Conn -> ChildList -> String -> IO Statement               
+newSth indbo mchildren query = 
     do l "in newSth"
        sstate <- newSState indbo query
-       return $ wrapStmt sstate
+       let retval = wrapStmt sstate
+       addChild mchildren retval
+       return retval
 
 fgettables iconn = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
                    withConn iconn $ \cconn -> 
                    withCString "" $ \emptycs ->
     do rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
-       wrappedsthptr <- wrapstmt sthptr
+       wrappedsthptr <- withRawConn iconn
+                        (\rawconn -> wrapstmt sthptr rawconn)
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
        checkError "fgettables allocHandle" (DbcHandle cconn) rc1
 
@@ -104,7 +108,8 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
        public_ffinish sstate  
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
-       wrappedsthptr <- wrapstmt sthptr
+       wrappedsthptr <- withRawConn (dbo sstate)
+                        (\rawconn -> wrapstmt sthptr rawconn)
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
        checkError "execute allocHandle" (DbcHandle cconn) rc1
 
@@ -269,7 +274,7 @@ ffinish p = withRawStmt p $ sqlFreeHandleSth_app
 
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
-  wrapstmt :: Ptr CStmt -> IO (Ptr WrappedCStmt)
+  wrapstmt :: Ptr CStmt -> Ptr WrappedCConn -> IO (Ptr WrappedCStmt)
 
 foreign import ccall unsafe "sql.h SQLDescribeCol"
   sqlDescribeCol :: Ptr CStmt   
