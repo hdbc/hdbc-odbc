@@ -18,7 +18,7 @@ Copyright (C) 2006 John Goerzen <jgoerzen@complete.org>
     License along with this library; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
-module Database.HDBC.ODBC.TypeConv(fromOType) where
+module Database.HDBC.ODBC.TypeConv(fromOTypeInfo, fromOTypeCol) where
 import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
@@ -45,18 +45,30 @@ l _ = return ()
 #include <sql.h>
 #include <sqlext.h>
 
-fromOType (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
-    (fromSql colname,
-     SqlColDesc {colType = convdatatype (fromIntegral ((fromSql datatype)::Int32)),
-                 colSize = Just (fromSql colsize),
+fromOTypeInfo :: String         -- ^ Column name
+              -> #{type SQLSMALLINT} -- ^ Data type
+              -> #{type SQLUINTEGER} -- ^ Column size
+              -> #{type SQLSMALLINT} -- ^ Is it nullable
+              -> (String, SqlColDesc)
+fromOTypeInfo colname datatype colsize nullable =
+    (colname,
+     SqlColDesc {colType = convdatatype datatype,
                  colOctetLength = Nothing,
                  colDecDigits = Nothing,
-                 colNullable = case (fromSql nullable)::Int of
+                 colSize = Just (fromIntegral colsize),
+                 colNullable = case nullable of
                                  #{const SQL_NO_NULLS} -> Just False
                                  #{const SQL_NULLABLE} -> Just True
                                  _ -> Nothing
                 }
     )
+
+fromOTypeCol (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
+    fromOTypeInfo (fromSql colname)
+                  (fromIntegral ((fromSql datatype)::Int))
+                  (fromSql colsize)
+                  (fromIntegral ((fromSql nullable)::Int))
+fromOTypeCol x = error $ "fromOTypeCol: unexpected result set: " ++ show x
 
 convdatatype :: #{type SQLSMALLINT} -> SqlTypeId
 convdatatype intype =

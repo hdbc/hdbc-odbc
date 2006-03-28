@@ -50,17 +50,17 @@ data SState =
     SState { stomv :: MVar (Maybe Stmt),
              dbo :: Conn,
              squery :: String,
-             colnamemv :: MVar [String]}
+             colinfomv :: MVar [(String, SqlColDesc)]}
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
 newSState :: Conn -> String -> IO SState
 newSState indbo query =
     do newstomv <- newMVar Nothing
-       newcolnamemv <- newMVar []
+       newcolinfomv <- newMVar []
        return SState {stomv = newstomv, 
                       dbo = indbo, squery = query,
-                      colnamemv = newcolnamemv}
+                      colinfomv = newcolinfomv}
 
 wrapStmt :: SState -> Statement
 wrapStmt sstate =
@@ -69,7 +69,9 @@ wrapStmt sstate =
                            finish = public_ffinish sstate,
                            fetchRow = ffetchrow sstate,
                            originalQuery = (squery sstate),
-                           getColumnNames = readMVar (colnamemv sstate)}
+                           getColumnNames = readMVar (colinfomv sstate)
+                                            >>= (return . map fst),
+                           describeResult = readMVar (colinfomv sstate)}
 
 newSth :: Conn -> ChildList -> String -> IO Statement               
 newSth indbo mchildren query = 
@@ -119,7 +121,7 @@ fdescribetable iconn tablename = withCStringLen tablename $ \(cs, csl) ->
        sth <- wrapTheStmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
-       return $ map fromOType results
+       return $ map fromOTypeCol results
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
@@ -156,10 +158,10 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
        case rc of
          0 -> do rowcount <- getSqlRowCount sthptr
                  ffinish fsthptr
-                 swapMVar (colnamemv sstate) []
+                 swapMVar (colinfomv sstate) []
                  touchForeignPtr fsthptr
                  return (fromIntegral rowcount)
-         colcount -> do fgetcolnames sthptr >>= swapMVar (colnamemv sstate)
+         colcount -> do fgetcolinfo sthptr >>= swapMVar (colinfomv sstate)
                         swapMVar (stomv sstate) (Just fsthptr)
                         touchForeignPtr fsthptr
                         return 0
@@ -270,14 +272,22 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                   return (SqlString s)
 
 
-fgetcolnames cstmt =
+fgetcolinfo cstmt =
     do ncols <- getNumResultCols cstmt
        mapM getname [1..ncols]
-    where getname icol = alloca $ \lp ->
-                         allocaBytes 128 $ \cs ->
-              do sqlDescribeCol cstmt icol cs 127 lp nullPtr nullPtr nullPtr nullPtr
-                 len <- peek lp
-                 peekCStringLen (cs, fromIntegral len)
+    where getname icol = alloca $ \colnamelp ->
+                         allocaBytes 128 $ \cscolname ->
+                         alloca $ \datatypeptr ->
+                         alloca $ \colsizeptr ->
+                         alloca $ \nullableptr ->
+              do sqlDescribeCol cstmt icol cscolname 127 colnamelp 
+                                datatypeptr colsizeptr nullPtr nullableptr
+                 colnamelen <- peek colnamelp
+                 colname <- peekCStringLen (cscolname, fromIntegral colnamelen)
+                 datatype <- peek datatypeptr
+                 colsize <- peek colsizeptr
+                 nullable <- peek nullableptr
+                 return $ fromOTypeInfo colname datatype colsize nullable
 
 -- FIXME: needs a faster algorithm.
 fexecutemany :: SState -> [[SqlValue]] -> IO ()
