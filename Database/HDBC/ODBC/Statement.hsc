@@ -118,7 +118,9 @@ fdescribetable iconn tablename = withCStringLen tablename \(cs, csl) ->
        sth <- wrapstmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
-       -- see http://msdn.microsoft.com/library/default.asp?url=/library/en-us/odbc/htm/odbcsqlcolumns.asp
+       return $ map procres results
+    where procres (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
+              -- START HERE
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
