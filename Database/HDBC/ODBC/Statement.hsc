@@ -90,7 +90,7 @@ makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
        checkError (name ++ " allocHandle") (DbcHandle cconn) rc1
        return fsthptr
 
-wrapstmt iconn fsthptr =
+wrapTheStmt iconn fsthptr =
     do sstate <- newSState iconn ""
        sstate <- newSState iconn ""
        swapMVar (stomv sstate) (Just fsthptr)
@@ -104,19 +104,19 @@ fgettables iconn =
                                 checkError "gettables simpleSqlTables" 
                                                (StmtHandle sthptr)
                         )
-       sth <- wrapstmt iconn fsthptr
+       sth <- wrapTheStmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
        return $ map (\x -> fromSql (x !! 2)) results
 
-fdescribetable iconn tablename = withCStringLen tablename \(cs, csl) ->
+fdescribetable iconn tablename = withCStringLen tablename $ \(cs, csl) ->
     do fsthptr <- makesth iconn "fdescribetable"
        withStmt fsthptr (\sthptr ->
                              simpleSqlColumns sthptr cs (fromIntegral csl) >>=
                                checkError "fdescribetable simpleSqlColumns"
                                           (StmtHandle sthptr)
                         )
-       sth <- wrapstmt iconn fsthptr
+       sth <- wrapTheStmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
        return $ map fromOType results
@@ -375,5 +375,5 @@ foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlTables"
   simpleSqlTables :: Ptr CStmt -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlColumns"
-  simpleSqlColumns :: Ptr CStmt -> Ptr #{type SQLCHAR} -> 
+  simpleSqlColumns :: Ptr CStmt -> Ptr CChar -> 
                       #{type SQLSMALLINT} -> IO #{type SQLRETURN}
