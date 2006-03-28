@@ -51,6 +51,22 @@ An example string is:
 
 >"DSN=hdbctest1"
 
+Important note for MySQL users:
+
+Unless you are going to use InnoDB tables, you are strongly encouraged to set
+
+>Option = 262144
+
+in your odbc.ini (for Unix users), or to disable transaction support in your
+DSN setup for Windows users.
+
+If you fail to do this, the MySQL ODBC driver will incorrectly state that it
+supports transactions.  dbTransactionSupport will incorrectly return True.
+commit and rollback will then silently fail.  This is certainly /NOT/ what you
+want.  It is a bug (or misfeature) in the MySQL driver, not in HDBC.
+
+You should ignore this advice if you are using InnoDB tables.
+
 -}
 connectODBC :: String -> IO Connection
 connectODBC args = withCStringLen args $ \(cs, cslen) -> 

@@ -27,10 +27,29 @@ DIFFERENCES FROM HDBC STANDARD
 
 None known at this time.
 
+MYSQL NOTE
+----------
+
+Important note for MySQL users:
+
+Unless you are going to use InnoDB tables, you are strongly encouraged to set
+
+Option = 262144
+
+in your odbc.ini (for Unix users), or to disable transaction support in your
+DSN setup for Windows users.
+
+If you fail to do this, the MySQL ODBC driver will incorrectly state that it
+supports transactions.  dbTransactionSupport will incorrectly return True.
+commit and rollback will then silently fail.  This is certainly /NOT/ what you
+want.  It is a bug (or misfeature) in the MySQL driver, not in HDBC.
+
+You should ignore this advice if you are using InnoDB tables.
+
 PREREQUISITES
 -------------
 
-Before installing this package, you'll need to have HDBC 0.99.0 or
+Before installing this package, you'll need to have HDBC 0.99.2 or
 above installed.  You can download HDBC from
 http://quux.org/devel/hdbc.
 
@@ -69,7 +88,7 @@ To use with GHC, you'll want to use:
 
 Or, with Cabal, use:
 
-  Build-Depends: HDBC>=0.99.0, HDBC-odbc
+  Build-Depends: HDBC>=0.99.2, HDBC-odbc
 
 This package has been tested with unixODBC.
 
