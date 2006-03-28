@@ -36,6 +36,7 @@ import Foreign.Ptr
 import Data.Word
 import Data.Int
 import Control.Concurrent.MVar
+import Control.Monad (when)
 
 #include <sql.h>
 #include <sqlext.h>
@@ -87,6 +88,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
 mkConn :: String -> Conn -> IO Connection
 mkConn args iconn = withConn iconn $ \cconn -> 
                     alloca $ \plen ->
+                    alloca $ \psqlusmallint ->
                     allocaBytes 128 $ \pbuf -> 
     do 
        children <- newMVar []
@@ -110,8 +112,16 @@ mkConn args iconn = withConn iconn $ \cconn ->
        len <- peek plen
        clientname <- peekCStringLen (pbuf, fromIntegral len)
 
-       disableAutoCommit cconn
-         >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
+       sqlGetInfo cconn #{const SQL_TXN_CAPABLE} (castPtr psqlusmallint)
+                      0 nullPtr
+         >>= checkError "sqlGetInfo SQL_TXN_CAPABLE" (DbcHandle cconn)
+       txninfo <- ((peek psqlusmallint)::IO (#{type SQLUSMALLINT}))
+       let txnsupport = txninfo /= #{const SQL_TC_NONE}
+
+       when txnsupport
+         (disableAutoCommit cconn
+          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
+         )
        return $ Connection {
                             disconnect = fdisconnect iconn children,
                             commit = fcommit iconn,
@@ -125,6 +135,7 @@ mkConn args iconn = withConn iconn $ \cconn ->
                             proxiedClientName = clientname,
                             proxiedClientVer = proxiedclientver,
                             dbServerVer = serverver,
+                            dbTransactionSupport = txnsupport,
                             getTables = fgettables iconn,
                             describeTable = fdescribetable iconn
                            }
