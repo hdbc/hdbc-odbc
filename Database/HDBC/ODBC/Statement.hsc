@@ -24,6 +24,7 @@ import Database.HDBC
 import Database.HDBC.DriverUtils
 import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Utils
+import Database.HDBC.ODBC.TypeConv
 import Foreign.C.Types
 import Foreign.ForeignPtr
 import Foreign.Ptr
@@ -118,9 +119,7 @@ fdescribetable iconn tablename = withCStringLen tablename \(cs, csl) ->
        sth <- wrapstmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
-       return $ map procres results
-    where procres (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
-              -- START HERE
+       return $ map fromOType results
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
