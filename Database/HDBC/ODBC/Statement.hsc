@@ -78,19 +78,24 @@ newSth indbo mchildren query =
        addChild mchildren retval
        return retval
 
-fgettables iconn = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-                   withConn iconn $ \cconn -> 
-                   withCString "" $ \emptycs ->
+makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
+                     withConn iconn $ \cconn -> 
+                     withCString "" $ \emptycs ->
     do rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
        wrappedsthptr <- withRawConn iconn
                         (\rawconn -> wrapstmt sthptr rawconn)
        fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError "fgettables allocHandle" (DbcHandle cconn) rc1
+       checkError (name ++ " allocHandle") (DbcHandle cconn) rc1
+       return fsthptr
 
-       simpleSqlTables sthptr >>=
-                       checkError "gettables simpleSqlTables" 
-                       (StmtHandle sthptr)
+fgettables iconn =
+    do fsthptr <- makesth iconn "fgettables"
+       withStmt fsthptr (\sthptr ->
+                             simpleSqlTables sthptr >>=
+                                checkError "gettables simpleSqlTables" 
+                                               (StmtHandle sthptr)
+                        )
 
        sstate <- newSState iconn ""
        swapMVar (stomv sstate) (Just fsthptr)
