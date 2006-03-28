@@ -2,7 +2,7 @@ Extra-Libraries: odbc
 include-dirs: .
 -- extra-lib-dirs: 
 Name: HDBC-odbc
-Version: 0.99.1.0
+Version: 0.99.2.0
 License: LGPL
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Stability: Alpha
@@ -16,6 +16,6 @@ Other-Modules: Database.HDBC.ODBC.Connection,
 --Extensions: ExistentialQuantification, AllowOverlappingInstances,
 --    AllowUndecidableInstances, CPP
 Extensions: ExistentialQuantification
-Build-Depends: base, mtl, HDBC>=0.99.1, parsec
+Build-Depends: base, mtl, HDBC>=0.99.2, parsec
 GHC-Options: -O2
 C-Sources: hdbc-odbc-helper.c

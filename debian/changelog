@@ -1,3 +1,10 @@
+hdbc-odbc (0.99.2.0) unstable; urgency=low
+
+  * Updated to 0.99.2: implemented new memory management system,
+    optional transaction support, and metadata inquiry features.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 28 Mar 2006 05:40:07 -0600
+
 hdbc-odbc (0.99.0.0) unstable; urgency=low
 
   * Initial Release.
