@@ -125,7 +125,8 @@ mkConn args iconn = withConn iconn $ \cconn ->
                             proxiedClientName = clientname,
                             proxiedClientVer = proxiedclientver,
                             dbServerVer = serverver,
-                            getTables = fgettables iconn
+                            getTables = fgettables iconn,
+                            describeTable = fdescribetable iconn
                            }
 
 --------------------------------------------------

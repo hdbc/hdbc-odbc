@@ -26,3 +26,6 @@ extern void *getSqlOvOdbc3(void);
 
 extern SQLRETURN disableAutoCommit(SQLHDBC conn);
 extern SQLRETURN simpleSqlTables(SQLHSTMT stmt);
+extern SQLRETURN simpleSqlColumns(SQLHSTMT stmt, SQLCHAR *tablename, 
+                                  SQLSMALLINT tnlen);
+

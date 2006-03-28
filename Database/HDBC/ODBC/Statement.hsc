@@ -89,6 +89,13 @@ makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
        checkError (name ++ " allocHandle") (DbcHandle cconn) rc1
        return fsthptr
 
+wrapstmt iconn fsthptr =
+    do sstate <- newSState iconn ""
+       sstate <- newSState iconn ""
+       swapMVar (stomv sstate) (Just fsthptr)
+       let sth = wrapStmt sstate
+       return sth
+
 fgettables iconn =
     do fsthptr <- makesth iconn "fgettables"
        withStmt fsthptr (\sthptr ->
@@ -96,13 +103,22 @@ fgettables iconn =
                                 checkError "gettables simpleSqlTables" 
                                                (StmtHandle sthptr)
                         )
-
-       sstate <- newSState iconn ""
-       swapMVar (stomv sstate) (Just fsthptr)
-       let sth = wrapStmt sstate
+       sth <- wrapstmt iconn fsthptr
        results <- fetchAllRows sth
        l (show results)
        return $ map (\x -> fromSql (x !! 2)) results
+
+fdescribetable iconn tablename = withCStringLen tablename \(cs, csl) ->
+    do fsthptr <- makesth iconn "fdescribetable"
+       withStmt fsthptr (\sthptr ->
+                             simpleSqlColumns sthptr cs (fromIntegral csl) >>=
+                               checkError "fdescribetable simpleSqlColumns"
+                                          (StmtHandle sthptr)
+                        )
+       sth <- wrapstmt iconn fsthptr
+       results <- fetchAllRows sth
+       l (show results)
+       -- see http://msdn.microsoft.com/library/default.asp?url=/library/en-us/odbc/htm/odbcsqlcolumns.asp
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
@@ -356,3 +372,7 @@ foreign import ccall unsafe "sql.h SQLFetch"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlTables"
   simpleSqlTables :: Ptr CStmt -> IO #{type SQLRETURN}
+
+foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlColumns"
+  simpleSqlColumns :: Ptr CStmt -> Ptr #{type SQLCHAR} -> 
+                      #{type SQLSMALLINT} -> IO #{type SQLRETURN}
