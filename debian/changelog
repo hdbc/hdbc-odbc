@@ -1,3 +1,10 @@
+hdbc-odbc (0.99.2.1) unstable; urgency=low
+
+  * Give wrapobj a unique name so ODBC and PostgreSQL can coexist
+    in a single binary.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 28 Mar 2006 22:21:47 -0600
+
 hdbc-odbc (0.99.2.0) unstable; urgency=low
 
   * Updated to 0.99.2: implemented new memory management system,
