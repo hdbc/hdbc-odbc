@@ -305,7 +305,7 @@ ffinish :: Stmt -> IO ()
 ffinish p = withRawStmt p $ sqlFreeHandleSth_app 
 
 
-foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj"
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobjodbc"
   wrapstmt :: Ptr CStmt -> Ptr WrappedCConn -> IO (Ptr WrappedCStmt)
 
 foreign import ccall unsafe "sql.h SQLDescribeCol"

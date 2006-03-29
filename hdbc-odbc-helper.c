@@ -18,7 +18,7 @@ So, here's a little wrapper for things. */
 
 void dbc_conditional_finalizer(finalizeonce *conn);
 
-finalizeonce *wrapobj(void *obj, finalizeonce *parentobj) {
+finalizeonce *wrapobjodbc(void *obj, finalizeonce *parentobj) {
   finalizeonce *newobj;
   newobj = malloc(sizeof(finalizeonce));
   if (newobj == NULL) {
@@ -38,8 +38,8 @@ finalizeonce *wrapobj(void *obj, finalizeonce *parentobj) {
   return newobj;
 }
 
-finalizeonce *wrapobj_extra(void *obj, void *extra, finalizeonce *parentobj) {
-  finalizeonce *newobj = wrapobj(obj, parentobj);
+finalizeonce *wrapobjodbc_extra(void *obj, void *extra, finalizeonce *parentobj) {
+  finalizeonce *newobj = wrapobjodbc(obj, parentobj);
   if (newobj != NULL)
     newobj->extrainfo = extra;
   return newobj;

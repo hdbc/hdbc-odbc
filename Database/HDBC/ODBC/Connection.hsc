@@ -185,7 +185,7 @@ foreign import ccall unsafe "sql.h SQLAllocHandle"
   sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
                     Ptr () -> IO (#{type SQLRETURN})
 
-foreign import ccall unsafe "hdbc-odbc-helper.h wrapobj_extra"
+foreign import ccall unsafe "hdbc-odbc-helper.h wrapobjodbc_extra"
   wrapconn :: Ptr CConn -> Ptr CEnv -> Ptr WrappedCConn -> IO (Ptr WrappedCConn)
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"

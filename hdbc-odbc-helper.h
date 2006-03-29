@@ -11,9 +11,9 @@ typedef struct TAG_finalizeonce {
   struct TAG_finalizeonce *parent;
 } finalizeonce;
 
-extern finalizeonce *wrapobj(void *obj, finalizeonce *parentobj);
-extern finalizeonce *wrapobj_extra(void *obj, void *extra,
-                                   finalizeonce *parentobj);
+extern finalizeonce *wrapobjodbc(void *obj, finalizeonce *parentobj);
+extern finalizeonce *wrapobjodbc_extra(void *obj, void *extra,
+                                       finalizeonce *parentobj);
 
 extern SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res);
 extern void sqlFreeHandleDbc_finalizer(finalizeonce *res);
