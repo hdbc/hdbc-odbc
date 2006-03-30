@@ -44,6 +44,7 @@ l _ = return ()
 
 #include <sql.h>
 #include <sqlext.h>
+#include <sqlucode.h>
 
 fromOTypeInfo :: String         -- ^ Column name
               -> #{type SQLSMALLINT} -- ^ Data type
