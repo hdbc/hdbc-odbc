@@ -32,7 +32,7 @@ clean:
 	-./setup clean
 	-rm -rf html `find . -name "*.o"` `find . -name "*.hi"` \
 		`find . -name "*~"` *.a setup dist testsrc/runtests \
-		local-pkg doctmp
+		local-pkg doctmp *.buildinfo
 	-rm -rf testtmp/* testtmp*
 
 testsrc/runtests: all $(wildcard testsrc/*.hs) $(wildcard testsrc/*/*.hs) $(wildcard testsrc/*/*/*.hs)

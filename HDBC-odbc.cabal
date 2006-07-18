@@ -1,4 +1,4 @@
-Extra-Libraries: odbc
+-- Extra-Libraries: odbc     -- handled via Setup.hs in its buildinfo file
 include-dirs: .
 -- extra-lib-dirs: 
 Name: HDBC-odbc
