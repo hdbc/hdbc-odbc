@@ -2,7 +2,7 @@
 include-dirs: .
 -- extra-lib-dirs: 
 Name: HDBC-odbc
-Version: 1.0.0.0
+Version: 1.0.0.1
 License: LGPL
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Stability: Alpha

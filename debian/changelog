@@ -1,3 +1,9 @@
+hdbc-odbc (1.0.0.1) unstable; urgency=low
+
+  * Updated to now build on Windows.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 18 Jul 2006 03:21:57 -0500
+
 hdbc-odbc (1.0.0.0) unstable; urgency=low
 
   * Blessing as 1.0.0.0
