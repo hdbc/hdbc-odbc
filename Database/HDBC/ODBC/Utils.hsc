@@ -30,6 +30,9 @@ import Foreign.Marshal.Array
 import Foreign.Marshal.Alloc
 import Data.Word
 
+#ifdef mingw32_HOST_OS
+#include <windows.h>
+#endif
 #include "hdbc-odbc-helper.h"
 
 data SqlHandleT = EnvHandle (Ptr CEnv)

@@ -1,3 +1,6 @@
+#ifdef mingw32_HOST_OS
+#include <windows.h>
+#endif
 #include <sql.h>
 
 extern int sqlSucceeded(SQLRETURN ret);

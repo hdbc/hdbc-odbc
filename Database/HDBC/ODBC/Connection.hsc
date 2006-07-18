@@ -38,6 +38,9 @@ import Data.Int
 import Control.Concurrent.MVar
 import Control.Monad (when)
 
+#ifdef mingw32_HOST_OS
+#include <windows.h>
+#endif
 #include <sql.h>
 #include <sqlext.h>
 
