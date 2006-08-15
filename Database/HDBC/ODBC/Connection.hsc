@@ -97,7 +97,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
             -- Now connect.
             sqlDriverConnect dbcptr nullPtr cs (fromIntegral cslen)
                              nullPtr 0 nullPtr
-                             #{const SQL_DRIVER_COMPLETE}
+                             #{const SQL_DRIVER_NOPROMPT}
                               >>= checkError "connectODBC/sqlDriverConnect" 
                                   (DbcHandle dbcptr)
             mkConn args fdbcptr
