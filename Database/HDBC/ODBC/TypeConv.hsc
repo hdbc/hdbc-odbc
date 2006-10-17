@@ -100,8 +100,8 @@ convdatatype intype =
       #{const SQL_TYPE_TIME} -> SqlTimeT
       #{const SQL_TYPE_TIMESTAMP} -> SqlTimestampT
       -- ODBC libraries don't seem to define the UTC items
-      -- #{const SQL_TYPE_UTCDATETIME} -> SqlUTCDateTimeT
-      -- #{const SQL_TYPE_UTCTIME} -> SqlUTCTimeT
+       -- {const SQL_TYPE_UTCDATETIME} -> SqlUTCDateTimeT
+       -- {const SQL_TYPE_UTCTIME} -> SqlUTCTimeT
       #{const SQL_INTERVAL_MONTH} -> SqlIntervalT SqlIntervalMonthT
       #{const SQL_INTERVAL_YEAR} -> SqlIntervalT SqlIntervalYearT
       #{const SQL_INTERVAL_YEAR_TO_MONTH} -> SqlIntervalT SqlIntervalYearToMonthT

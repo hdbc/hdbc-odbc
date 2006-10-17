@@ -77,7 +77,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
                    alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
          do -- Create the Environment Handle
             rc1 <- sqlAllocHandle #{const SQL_HANDLE_ENV}
-                                  nullPtr -- #{const SQL_NULL_HANDLE}
+                                  nullPtr  -- {const SQL_NULL_HANDLE}
                                    (castPtr penvptr)
             envptr <- peek penvptr 
 
