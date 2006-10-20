@@ -1,3 +1,12 @@
+hdbc-odbc (1.0.1.1) unstable; urgency=low
+
+  * Fix some comments in which the # character confused Haddock
+  * Change SQL_DRIVER_COMPLETE to SQL_DRIVER_NOPROMPT.
+    Thanks to Ben Kavanagh for the fix.
+  * Rebuilt against GHC 6.6.
+
+ -- John Goerzen <jgoerzen@complete.org>  Thu, 19 Oct 2006 22:00:36 -0500
+
 hdbc-odbc (1.0.1.0) unstable; urgency=low
 
   * Rebuild against HDBC 1.0.1.
