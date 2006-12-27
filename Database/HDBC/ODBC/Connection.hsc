@@ -19,11 +19,12 @@ Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
 
-module Database.HDBC.ODBC.Connection (connectODBC) where
+module Database.HDBC.ODBC.Connection (connectODBC, Impl.Connection) where
 
 import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
+import qualified Database.HDBC.ODBC.ConnectionImpl as Impl
 import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Statement
 import Foreign.C.Types
@@ -71,7 +72,7 @@ want.  It is a bug (or misfeature) in the MySQL driver, not in HDBC.
 You should ignore this advice if you are using InnoDB tables.
 
 -}
-connectODBC :: String -> IO Connection
+connectODBC :: String -> IO Impl.Connection
 connectODBC args = withCStringLen args $ \(cs, cslen) -> 
                    alloca $ \(penvptr::Ptr (Ptr CEnv)) ->
                    alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
@@ -104,7 +105,7 @@ connectODBC args = withCStringLen args $ \(cs, cslen) ->
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Conn -> IO Connection
+mkConn :: String -> Conn -> IO Impl.Connection
 mkConn args iconn = withConn iconn $ \cconn -> 
                     alloca $ \plen ->
                     alloca $ \psqlusmallint ->
@@ -141,22 +142,22 @@ mkConn args iconn = withConn iconn $ \cconn ->
          (disableAutoCommit cconn
           >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
          )
-       return $ Connection {
-                            disconnect = fdisconnect iconn children,
-                            commit = fcommit iconn,
-                            rollback = frollback iconn,
-                            run = frun iconn children,
-                            prepare = newSth iconn children,
-                            clone = connectODBC args,
+       return $ Impl.Connection {
+                            Impl.disconnect = fdisconnect iconn children,
+                            Impl.commit = fcommit iconn,
+                            Impl.rollback = frollback iconn,
+                            Impl.run = frun iconn children,
+                            Impl.prepare = newSth iconn children,
+                            Impl.clone = connectODBC args,
                             -- FIXME: add clone
-                            hdbcDriverName = "odbc",
-                            hdbcClientVer = clientver,
-                            proxiedClientName = clientname,
-                            proxiedClientVer = proxiedclientver,
-                            dbServerVer = serverver,
-                            dbTransactionSupport = txnsupport,
-                            getTables = fgettables iconn,
-                            describeTable = fdescribetable iconn
+                            Impl.hdbcDriverName = "odbc",
+                            Impl.hdbcClientVer = clientver,
+                            Impl.proxiedClientName = clientname,
+                            Impl.proxiedClientVer = proxiedclientver,
+                            Impl.dbServerVer = serverver,
+                            Impl.dbTransactionSupport = txnsupport,
+                            Impl.getTables = fgettables iconn,
+                            Impl.describeTable = fdescribetable iconn
                            }
 
 --------------------------------------------------

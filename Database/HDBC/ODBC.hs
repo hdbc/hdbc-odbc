@@ -32,10 +32,10 @@ Written by John Goerzen, jgoerzen\@complete.org
 
 module Database.HDBC.ODBC
     (
-     connectODBC
+     connectODBC, Connection()
     )
 
 where
 
-import Database.HDBC.ODBC.Connection(connectODBC)
+import Database.HDBC.ODBC.Connection(connectODBC, Connection())
 
