@@ -1,3 +1,9 @@
+hdbc-odbc (1.1.0.0) unstable; urgency=low
+
+  * New API thanks to patch from Peter Thiemann.
+
+ -- John Goerzen <jgoerzen@complete.org>  Wed, 02 May 2007 05:58:54 -0500
+
 hdbc-odbc (1.0.1.1) unstable; urgency=low
 
   * Fix some comments in which the # character confused Haddock
