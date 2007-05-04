@@ -1,3 +1,9 @@
+hdbc-odbc (1.1.2.0) unstable; urgency=low
+
+  * Rebuild for HDBC 1.1.2.
+
+ -- John Goerzen <jgoerzen@complete.org>  Thu, 03 May 2007 04:50:41 -0500
+
 hdbc-odbc (1.1.0.0) unstable; urgency=low
 
   * New API thanks to patch from Peter Thiemann.
