@@ -12,7 +12,8 @@ Other-Modules: Database.HDBC.ODBC.Connection,
  Database.HDBC.ODBC.Statement,
  Database.HDBC.ODBC.Types,
  Database.HDBC.ODBC.Utils,
- Database.HDBC.ODBC.TypeConv
+ Database.HDBC.ODBC.TypeConv,
+ Database.HDBC.ODBC.ConnectionImpl
 --Extensions: ExistentialQuantification, AllowOverlappingInstances,
 --    AllowUndecidableInstances, CPP
 Extensions: ExistentialQuantification
