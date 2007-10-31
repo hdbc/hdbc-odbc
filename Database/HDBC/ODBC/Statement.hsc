@@ -110,7 +110,7 @@ fgettables iconn =
                                                (StmtHandle sthptr)
                         )
        sth <- wrapTheStmt iconn fsthptr
-       results <- fetchAllRows sth
+       results <- fetchAllRows' sth
        l (show results)
        return $ map (\x -> fromSql (x !! 2)) results
 
@@ -122,7 +122,7 @@ fdescribetable iconn tablename = withCStringLen tablename $ \(cs, csl) ->
                                           (StmtHandle sthptr)
                         )
        sth <- wrapTheStmt iconn fsthptr
-       results <- fetchAllRows sth
+       results <- fetchAllRows' sth
        l (show results)
        return $ map fromOTypeCol results
 
