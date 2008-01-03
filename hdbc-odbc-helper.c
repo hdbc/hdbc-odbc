@@ -1,4 +1,3 @@
-#include <HsBase.h>
 #ifdef mingw32_HOST_OS
 #include <windows.h>
 #endif
