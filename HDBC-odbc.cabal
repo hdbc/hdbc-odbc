@@ -8,7 +8,7 @@ Maintainer: John Goerzen <jgoerzen@complete.org>
 Author: John Goerzen
 Copyright: Copyright (c) 2005-2007 John Goerzen
 license-file: COPYRIGHT
-extra-source-files: COPYING
+extra-source-files: COPYING, hdbc-odbc-helper.h
 homepage: http://software.complete.org/hdbc-odbc
 Category: Database
 synopsis: ODBC driver for HDBC
