@@ -29,7 +29,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base, mtl, HDBC>=1.1.0, parsec
+  Build-Depends: base, mtl, HDBC>=1.1.0
   GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(win32)

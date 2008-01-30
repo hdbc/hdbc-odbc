@@ -1,3 +1,9 @@
+hdbc-odbc (1.1.4.0.1) unstable; urgency=low
+
+  * Removed dep on parsec in cabal file.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 29 Jan 2008 14:13:59 -0600
+
 hdbc-odbc (1.1.4.0.0) unstable; urgency=low
 
   * Update for GHC 6.8.
