@@ -49,7 +49,7 @@ import Control.Monad (when)
 
 For information on the meaning of the passed string, please see:
 
-<http://msdn.microsoft.com/library/default.asp?url=/library/en-us/odbc/htm/odbcsqldrivers.asp>
+<http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>
 
 An example string is:
 
