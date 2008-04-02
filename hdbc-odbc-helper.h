@@ -1,5 +1,6 @@
-#ifdef mingw32_HOST_OS
+#if defined(mingw32_HOST_OS) || defined(mingw32_TARGET_OS) || defined(__MINGW32__)
 #include <windows.h>
+#include <winnt.h>
 #endif
 #include <sql.h>
 
