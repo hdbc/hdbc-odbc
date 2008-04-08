@@ -179,6 +179,7 @@ getNumResultCols sthptr = alloca $ \pcount ->
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
+                           alloca $ \pnullable ->
 {- We have to start by getting the SQL type of the column so we can
    send the correct type back to the server.  Sigh.  If the ODBC
    backend won't tell us the type, we fake it.
@@ -190,7 +191,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
    control passes out of this function. -}
 
     do rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
-                      nullPtr
+                      pnullable
        when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
              poke pcolsize 0
@@ -202,7 +203,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
          SqlNull -> -- NULL parameter, bind it as such.
                     do rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
-                              #{const SQL_CHAR} coltype colsize decdigits
+                              #{const SQL_C_CHAR} coltype colsize decdigits
                               nullPtr 0 nullData
                        checkError ("bindparameter " ++ show icol)
                                       (StmtHandle sthptr) rc2
@@ -214,7 +215,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                      poke pcslen (fromIntegral cslen)
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
-                       #{const SQL_CHAR} coltype colsize decdigits
+                       #{const SQL_C_CHAR} coltype colsize decdigits
                        csptr (fromIntegral cslen + 1) pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
