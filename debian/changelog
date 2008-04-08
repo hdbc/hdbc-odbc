@@ -1,3 +1,10 @@
+hdbc-odbc (1.1.4.2.0) unstable; urgency=low
+
+  * Fix two behaviors in the Statement binding that caused trouble
+    for Progress databases.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 08 Apr 2008 13:34:26 -0500
+
 hdbc-odbc (1.1.4.1.0) unstable; urgency=low
 
   * New release that fixes OS detection for Windows.
