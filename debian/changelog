@@ -1,3 +1,10 @@
+hdbc-odbc (1.1.4.3.0) unstable; urgency=low
+
+  * Applied patch from Satoshi Nakamura to correct an error when loading
+    UTF-8 data from MySQL that contains NULLs.
+
+ -- John Goerzen <jgoerzen@complete.org>  Mon, 14 Apr 2008 13:42:18 -0500
+
 hdbc-odbc (1.1.4.2.0) unstable; urgency=low
 
   * Fix two behaviors in the Statement binding that caused trouble
