@@ -255,25 +255,31 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                res <- mapM (getCol cstmt ) 
                                       [1..ncols]
                                return (stmt, Just res)
-    where getCol cstmt icol = alloca $ \psize ->
-             do sqlDescribeCol cstmt icol nullPtr 0 nullPtr nullPtr
-                               psize nullPtr nullPtr
-                               >>= checkError "sqlDescribeCol" 
-                                       (StmtHandle cstmt)
-                size <- peek psize
-                l $ "colsize: " ++ show size
-                let bufsize = size + 127 -- Try to give extra space
-                alloca $ \plen -> 
-                 allocaBytes (fromIntegral bufsize + 1) $ \cs ->
-                   do sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR} 
-                                 cs (fromIntegral bufsize) plen
-                      reslen <- peek plen
-                      case reslen of
-                        #{const SQL_NULL_DATA} -> return SqlNull
-                        #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                        len -> do s <- peekCStringLen (cs, fromIntegral len)
-                                  l $ "col is: " ++ s
-                                  return (SqlString s)
+    where getCol cstmt icol =
+             do let defaultLen = 128
+                alloca $ \plen ->
+                 allocaBytes defaultLen $ \buf ->
+                   do res <- sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR}
+                                        buf (fromIntegral defaultLen) plen
+                      case res of
+                        #{const SQL_SUCCESS} ->
+                            do len <- peek plen
+                               case len of
+                                 #{const SQL_NULL_DATA} -> return SqlNull
+                                 #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
+                                 len -> do s <- peekCString buf
+                                           l $ "col is: " ++ s
+                                           return (SqlString s)
+                        #{const SQL_SUCCESS_WITH_INFO} ->
+                            do len <- peek plen
+                               allocaBytes (fromIntegral len + 1) $ \buf2 ->
+                                 do sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR}
+                                               buf2 (fromIntegral len + 1) plen
+                                               >>= checkError "sqlGetData" (StmtHandle cstmt)
+                                    s <- liftM2 (++) (peekCString buf) (peekCString buf2)
+                                    l $ "col is: " ++ s
+                                    return (SqlString s)
+                        res -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
 
 fgetcolinfo cstmt =
