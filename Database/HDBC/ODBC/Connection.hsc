@@ -143,6 +143,7 @@ mkConn args iconn = withConn iconn $ \cconn ->
           >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
          )
        return $ Impl.Connection {
+                            Impl.getQueryInfo = fGetQueryInfo iconn children,
                             Impl.disconnect = fdisconnect iconn children,
                             Impl.commit = fcommit iconn,
                             Impl.rollback = frollback iconn,

@@ -24,6 +24,7 @@ import Database.HDBC.ColTypes as ColTypes
 
 data Connection = 
     Connection {
+                getQueryInfo :: String -> IO ([SqlColDesc], [(String, SqlColDesc)]),
                 disconnect :: IO (),
                 commit :: IO (),
                 rollback :: IO (),
