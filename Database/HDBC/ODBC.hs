@@ -32,10 +32,10 @@ Written by John Goerzen, jgoerzen\@complete.org
 
 module Database.HDBC.ODBC
     (
-     connectODBC, Connection()
+     connectODBC, Connection(), getQueryInfo
     )
 
 where
 
 import Database.HDBC.ODBC.Connection(connectODBC, Connection())
-
+import Database.HDBC.ODBC.ConnectionImpl(getQueryInfo)
