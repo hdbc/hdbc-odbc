@@ -1,3 +1,10 @@
+hdbc-odbc (1.1.4.4.0) unstable; urgency=low
+
+  * This version not uploaded to Debian.
+  * Linking fix for Windows users.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 03 Jun 2008 14:54:45 -0500
+
 hdbc-odbc (1.1.4.3.0) unstable; urgency=low
 
   * Applied patch from Satoshi Nakamura to correct an error when loading
