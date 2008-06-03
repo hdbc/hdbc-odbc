@@ -45,6 +45,12 @@ import Control.Monad (when)
 #include <sql.h>
 #include <sqlext.h>
 
+#ifdef mingw32_HOST_OS
+#let CALLCONV = "stdcall"
+#else
+#let CALLCONV = "ccall"
+#endif
+
 {- | Connect to an ODBC server.
 
 For information on the meaning of the passed string, please see:
@@ -185,7 +191,7 @@ fdisconnect iconn mchildren  = withRawConn iconn $ \rawconn ->
        -- FIXME: will this checkError segfault?
        checkError "disconnect" (DbcHandle $ llconn) res
 
-foreign import ccall unsafe "sql.h SQLAllocHandle"
+foreign import #{CALLCONV} unsafe "sql.h SQLAllocHandle"
   sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
                     Ptr () -> IO (#{type SQLRETURN})
 
@@ -198,11 +204,11 @@ foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
   sqlFreeHandleDbc_app :: Ptr WrappedCConn -> IO (#{type SQLRETURN})
 
-foreign import ccall unsafe "sql.h SQLSetEnvAttr"
+foreign import #{CALLCONV} unsafe "sql.h SQLSetEnvAttr"
   sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
                    Ptr () -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "sql.h SQLDriverConnect"
+foreign import #{CALLCONV} unsafe "sql.h SQLDriverConnect"
   sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
                    -> CString -> #{type SQLSMALLINT}
                    -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
@@ -216,14 +222,14 @@ foreign import ccall unsafe "hdbc-odbc-helper.h SQLSetConnectAttr"
                     -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
                     -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "sql.h SQLEndTran"
+foreign import #{CALLCONV} unsafe "sql.h SQLEndTran"
   sqlEndTran :: #{type SQLSMALLINT} -> Ptr CConn -> #{type SQLSMALLINT}
              -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h disableAutoCommit"
   disableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "sql.h SQLGetInfo"
+foreign import #{CALLCONV} unsafe "sql.h SQLGetInfo"
   sqlGetInfo :: Ptr CConn -> #{type SQLUSMALLINT} -> Ptr () ->
                 #{type SQLSMALLINT} -> Ptr #{type SQLSMALLINT} ->
                 IO #{type SQLRETURN}

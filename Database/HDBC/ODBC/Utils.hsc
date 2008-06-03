@@ -35,6 +35,12 @@ import Data.Word
 #endif
 #include "hdbc-odbc-helper.h"
 
+#ifdef mingw32_HOST_OS
+#let CALLCONV = "stdcall"
+#else
+#let CALLCONV = "ccall"
+#endif
+
 data SqlHandleT = EnvHandle (Ptr CEnv)
                | DbcHandle (Ptr CConn)
                | StmtHandle (Ptr CStmt)
@@ -134,7 +140,7 @@ isOK r = sqlSucceeded r /= 0
 foreign import ccall unsafe "sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt
 
-foreign import ccall unsafe "sql.h SQLGetDiagRec"
+foreign import #{CALLCONV} unsafe "sql.h SQLGetDiagRec"
   sqlGetDiagRec :: #{type SQLSMALLINT} -> Ptr () -> 
                    #{type SQLSMALLINT} -> CString -> Ptr (#{type SQLINTEGER})
                    -> CString -> #{type SQLSMALLINT} 
