@@ -58,7 +58,7 @@ raiseError msg code cconn =
        throwDyn $ SqlError {seState = show (map fst info),
                             seNativeError = fromIntegral code,
                             seErrorMsg = msg ++ ": " ++  
-                                         map snd info}
+                                         show (map snd info)}
        where (ht, hp::(Ptr ())) = case cconn of
                           EnvHandle c -> (#{const SQL_HANDLE_ENV}, castPtr c)
                           DbcHandle c -> (#{const SQL_HANDLE_DBC}, castPtr c)
