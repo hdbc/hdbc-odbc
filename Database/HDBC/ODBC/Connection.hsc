@@ -61,6 +61,13 @@ An example string is:
 
 >"DSN=hdbctest1"
 
+This, and all other functions that use ODBC directly or indirectly, can raise
+SqlErrors just like other HDBC backends.  The seErrorMsg field is specified
+as a String in HDBC.  ODBC specifies this data as a list of strings.
+Therefore, this driver uses show on the data from ODBC.  For friendly display,
+or handling of individual component messages in your code, you can use 
+read on the seErrorMsg field in a context that expects @[String]@.
+
 Important note for MySQL users:
 
 Unless you are going to use InnoDB tables, you are strongly encouraged to set
