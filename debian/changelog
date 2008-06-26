@@ -1,3 +1,9 @@
+hdbc-odbc (1.1.4.4.1) unstable; urgency=low
+
+  * Re-built against newer HDBC.
+
+ -- John Goerzen <jgoerzen@complete.org>  Thu, 26 Jun 2008 09:17:04 -0500
+
 hdbc-odbc (1.1.4.4.0) unstable; urgency=low
 
   * This version not uploaded to Debian.
