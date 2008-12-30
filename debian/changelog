@@ -1,3 +1,10 @@
+hdbc-odbc (1.1.6.0.0) unstable; urgency=low
+
+  * GHC 6.10 patch from Brian Bloniarz.
+  * Use dh_haskell_depends.
+
+ -- John Goerzen <jgoerzen@complete.org>  Tue, 30 Dec 2008 09:19:10 -0600
+
 hdbc-odbc (1.1.4.4.1) unstable; urgency=low
 
   * Re-built against newer HDBC.
