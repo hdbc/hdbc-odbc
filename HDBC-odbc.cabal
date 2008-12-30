@@ -1,6 +1,6 @@
 Name: HDBC-odbc
 Version: 1.1.6.0
-Cabal-Version: >=1.2
+Cabal-Version: >=1.2.3
 Build-type: Simple
 License: LGPL
 Maintainer: John Goerzen <jgoerzen@complete.org>
