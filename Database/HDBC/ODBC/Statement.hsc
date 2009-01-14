@@ -221,7 +221,8 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                      poke pcslen (fromIntegral cslen)
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
-                       #{const SQL_C_CHAR} coltype colsize decdigits
+                       #{const SQL_C_CHAR} coltype 
+                       (if isOK rc1 then colsize else fromIntegral cslen + 1) decdigits
                        csptr (fromIntegral cslen + 1) pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
