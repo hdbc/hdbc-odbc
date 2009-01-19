@@ -1,3 +1,9 @@
+hdbc-odbc (1.1.6.0.1) unstable; urgency=high
+
+  * Rebuild with newer GHC.
+
+ -- John Goerzen <jgoerzen@complete.org>  Mon, 19 Jan 2009 16:15:40 -0600
+
 hdbc-odbc (1.1.6.0.0) unstable; urgency=low
 
   * GHC 6.10 patch from Brian Bloniarz.
