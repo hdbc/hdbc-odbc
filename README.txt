@@ -49,7 +49,7 @@ You should ignore this advice if you are using InnoDB tables.
 PREREQUISITES
 -------------
 
-Before installing this package, you'll need to have HDBC 1.1.4
+Before installing this package, you'll need to have HDBC 2.0.0
 above installed.  You can download HDBC from
 http://software.complete.org/hdbc
 
@@ -91,10 +91,11 @@ To use with GHC, you'll want to use:
 
 Or, with Cabal, use:
 
-  Build-Depends: HDBC>=0.99.2, HDBC-odbc
+  Build-Depends: HDBC>=2.0.0, HDBC-odbc
 
 This package has been tested with unixODBC.
 
 -- John Goerzen
+   January 2009
    January 2006
 
