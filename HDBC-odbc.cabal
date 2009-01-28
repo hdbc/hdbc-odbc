@@ -1,11 +1,11 @@
 Name: HDBC-odbc
-Version: 1.1.6.0
+Version: 2.0.0.0
 Cabal-Version: >=1.2.3
 Build-type: Simple
 License: LGPL
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Author: John Goerzen
-Copyright: Copyright (c) 2005-2008 John Goerzen
+Copyright: Copyright (c) 2005-2009 John Goerzen
 license-file: COPYRIGHT
 extra-source-files: COPYING, hdbc-odbc-helper.h
 homepage: http://software.complete.org/hdbc-odbc
@@ -16,6 +16,10 @@ Description: This package provides an ODBC database backend for HDBC.
  and Microsoft ODBC on Windows.  It is also the preferred way to access
  MySQL databases from Haskell.
 Stability: Beta
+
+Flag buildtests
+  description: Build the executable to run unit tests
+  default: False
 
 Library
   Exposed-Modules: Database.HDBC.ODBC
@@ -29,7 +33,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base<4, mtl, HDBC>=1.1.0
+  Build-Depends: base, mtl, HDBC>=2.0.0
   GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(mingw32) || os(win32)
@@ -38,3 +42,37 @@ Library
     Extra-Libraries: odbc
   include-dirs: .
   -- extra-lib-dirs: 
+
+Executable runtests
+  if flag(buildtests)
+    Buildable: True
+  else
+    Buildable: False
+  Build-Depends: HUnit, QuickCheck, testpack, containers
+  Main-Is: runtests.hs
+  Other-Modules: Database.HDBC.ODBC,
+    Database.HDBC.ODBC.Connection,
+    Database.HDBC.ODBC.Statement,
+    Database.HDBC.ODBC.Types,
+    Database.HDBC.ODBC.Utils,
+    Database.HDBC.ODBC.TypeConv,
+    Database.HDBC.ODBC.ConnectionImpl
+    SpecificDB,
+    SpecificDBTests,
+    TestMisc,
+    TestSbasics,
+    TestUtils,
+    Testbasics,
+    Tests
+  Hs-Source-Dirs: ., testsrc
+  C-Sources: hdbc-odbc-helper.c
+  if os(mingw32) || os(win32)
+    Extra-Libraries: odbc32
+  else
+    Extra-Libraries: odbc
+  include-dirs: .
+  GHC-Options: -O2
+  Extensions: 
+    ExistentialQuantification,
+    ForeignFunctionInterface,
+    PatternSignatures
