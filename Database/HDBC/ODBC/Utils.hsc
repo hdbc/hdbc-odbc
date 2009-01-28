@@ -55,9 +55,9 @@ checkError msg o res =
 raiseError :: String -> #{type SQLRETURN} -> SqlHandleT -> IO a
 raiseError msg code cconn =
     do info <- getdiag ht hp 1 
-       throwDyn $ SqlError {seState = show (map fst info),
-                            seNativeError = fromIntegral code,
-                            seErrorMsg = msg ++ ": " ++  
+       throwSqlError $ SqlError {seState = show (map fst info),
+                                 seNativeError = fromIntegral code,
+                                 seErrorMsg = msg ++ ": " ++  
                                          show (map snd info)}
        where (ht, hp::(Ptr ())) = case cconn of
                           EnvHandle c -> (#{const SQL_HANDLE_ENV}, castPtr c)
