@@ -41,6 +41,7 @@ import System.IO
 import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
+import qualified Data.ByteString.Unsafe as B
 
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
@@ -291,7 +292,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                  #{const SQL_NULL_DATA} -> return SqlNull
                                  #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
                                  len -> do bs <- B.packCString buf
-                                           l $ "col is: " ++ show (BUTF8.toString bs
+                                           l $ "col is: " ++ show (BUTF8.toString bs)
                                            return (SqlByteString bs)
                         #{const SQL_SUCCESS_WITH_INFO} ->
                             do len <- peek plen

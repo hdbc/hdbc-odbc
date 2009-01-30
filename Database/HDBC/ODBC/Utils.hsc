@@ -30,6 +30,8 @@ import Foreign.Storable
 import Foreign.Marshal.Array
 import Foreign.Marshal.Alloc
 import Data.Word
+import qualified Data.ByteString as B
+import qualified Data.ByteString.UTF8 as BUTF8
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -72,10 +74,10 @@ raiseError msg code cconn =
                            csmsg 1024 pmsglen
                     if sqlSucceeded ret == 0
                        then return []
-                       else do statebs <- peekCStringLen (csstate, 5)
+                       else do state <- peekCStringLen (csstate, 5)
                                nat <- peek pnaterr
                                msglen <- peek pmsglen
-                               msgbs <- B.packCStringLen (cmsg,
+                               msgbs <- B.packCStringLen (csmsg,
                                                           fromIntegral msglen)
                                let msg = BUTF8.toString msgbs
                                next <- getdiag ht hp (irow + 1)
