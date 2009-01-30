@@ -72,11 +72,12 @@ raiseError msg code cconn =
                            csmsg 1024 pmsglen
                     if sqlSucceeded ret == 0
                        then return []
-                       else do state <- peekCStringLen (csstate, 5)
+                       else do statebs <- peekCStringLen (csstate, 5)
                                nat <- peek pnaterr
                                msglen <- peek pmsglen
-                               msg <- peekCStringLen (csmsg, 
-                                                      fromIntegral msglen)
+                               msgbs <- B.packCStringLen (cmsg,
+                                                          fromIntegral msglen)
+                               let msg = BUTF8.toString msgbs
                                next <- getdiag ht hp (irow + 1)
                                return $ (state, 
                                          (show nat) ++ ": " ++ msg) : next
@@ -109,15 +110,6 @@ withEnv = genericUnwrap
 
 withRawEnv :: Env -> (Ptr WrappedCEnv -> IO b) -> IO b
 withRawEnv = withForeignPtr
-
-withCStringArr0 :: [SqlValue] -> (Ptr CString -> IO a) -> IO a
-withCStringArr0 inp action = withAnyArr0 convfunc freefunc inp action
-    where convfunc SqlNull = return nullPtr
-          convfunc x = newCString (fromSql x)
-          freefunc x =
-              if x == nullPtr
-                 then return ()
-                 else free x
 
 withAnyArr0 :: (a -> IO (Ptr b)) -- ^ Function that transforms input data into pointer
             -> (Ptr b -> IO ())  -- ^ Function that frees generated data

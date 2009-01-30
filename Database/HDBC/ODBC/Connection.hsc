@@ -2,7 +2,7 @@
 {-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
 {-
-Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
+Copyright (C) 2005-2009 John Goerzen <jgoerzen@complete.org>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -38,6 +38,8 @@ import Data.Word
 import Data.Int
 import Control.Concurrent.MVar
 import Control.Monad (when)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.UTF8 as BUTF8
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -86,7 +88,7 @@ You should ignore this advice if you are using InnoDB tables.
 
 -}
 connectODBC :: String -> IO Impl.Connection
-connectODBC args = withCStringLen args $ \(cs, cslen) -> 
+connectODBC args = B.useAsCStringLen (BUTF8.fromString args) $ \(cs, cslen) -> 
                    alloca $ \(penvptr::Ptr (Ptr CEnv)) ->
                    alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
          do -- Create the Environment Handle

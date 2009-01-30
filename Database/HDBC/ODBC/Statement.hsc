@@ -39,6 +39,8 @@ import Data.Int
 import Control.Exception
 import System.IO
 import Data.Maybe
+import qualified Data.ByteString as B
+import qualified Data.ByteString.UTF8 as BUTF8
 
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
@@ -120,7 +122,8 @@ fgettables iconn =
        l (show results)
        return $ map (\x -> fromSql (x !! 2)) results
 
-fdescribetable iconn tablename = withCStringLen tablename $ \(cs, csl) ->
+fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) $ 
+                                 \(cs, csl) ->
     do fsthptr <- makesth iconn "fdescribetable"
        withStmt fsthptr (\sthptr ->
                              simpleSqlColumns sthptr cs (fromIntegral csl) >>=
@@ -135,7 +138,8 @@ fdescribetable iconn tablename = withCStringLen tablename $ \(cs, csl) ->
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
 fexecute sstate args = withConn (dbo sstate) $ \cconn ->
-                       withCStringLen (squery sstate) $ \(cquery, cqlen) ->
+                       B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
+                            \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
     do l "in fexecute"
        public_ffinish sstate  
@@ -216,7 +220,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                        return []
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
                  -- not freed now, and pass it along...
-                  (csptr, cslen) <- newCStringLen (fromSql x)
+                  (csptr, cslen) <- cstrUtf8BString (fromSql x)
                   do pcslen <- malloc 
                      poke pcslen (fromIntegral cslen)
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
@@ -244,6 +248,18 @@ getSqlRowCount cstmt = alloca $ \prows ->
 {- General algorithm: find out how many columns we have, check the type
 of each to see if it's NULL.  If it's not, fetch it as text and return that.
 -}
+
+cstrUtf8BString :: B.ByteString -> IO CStringLen
+cstrUtf8BString bs = do
+    B.unsafeUseAsCStringLen bs $ \(s,len) -> do
+        res <- mallocBytes (len+1)
+        -- copy in
+        copyBytes res s len
+        -- null terminate
+        poke (plusPtr res len) (0::CChar)
+        -- return ptr
+        return (res, len)
+
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
 ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> 
@@ -274,18 +290,19 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                case len of
                                  #{const SQL_NULL_DATA} -> return SqlNull
                                  #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                                 len -> do s <- peekCString buf
-                                           l $ "col is: " ++ s
-                                           return (SqlString s)
+                                 len -> do bs <- B.packCString buf
+                                           l $ "col is: " ++ show (BUTF8.toString bs
+                                           return (SqlByteString bs)
                         #{const SQL_SUCCESS_WITH_INFO} ->
                             do len <- peek plen
                                allocaBytes (fromIntegral len + 1) $ \buf2 ->
                                  do sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR}
                                                buf2 (fromIntegral len + 1) plen
                                                >>= checkError "sqlGetData" (StmtHandle cstmt)
-                                    s <- liftM2 (++) (peekCString buf) (peekCString buf2)
-                                    l $ "col is: " ++ s
-                                    return (SqlString s)
+                                    bs <- liftM2 (B.append) (B.packCString buf)
+                                          (B.packCString buf2)
+                                    l $ "col is: " ++ (BUTF8.toString bs)
+                                    return (SqlByteString bs)
                         res -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
 
@@ -300,7 +317,8 @@ fgetcolinfo cstmt =
               do sqlDescribeCol cstmt icol cscolname 127 colnamelp 
                                 datatypeptr colsizeptr nullPtr nullableptr
                  colnamelen <- peek colnamelp
-                 colname <- peekCStringLen (cscolname, fromIntegral colnamelen)
+                 colnamebs <- B.packCStringLen (cscolname, fromIntegral colnamelen)
+                 let colname = BUTF8.toString colnamebs
                  datatype <- peek datatypeptr
                  colsize <- peek colsizeptr
                  nullable <- peek nullableptr

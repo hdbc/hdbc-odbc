@@ -33,7 +33,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base, mtl, HDBC>=2.0.0
+  Build-Depends: base, mtl, HDBC>=2.0.0, utf8-string
   GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(mingw32) || os(win32)
