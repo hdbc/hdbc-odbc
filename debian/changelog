@@ -2,7 +2,7 @@ hdbc-odbc (2.0.0.0-1) unstable; urgency=low
 
   * New upstream release.
 
- -- John Goerzen <jgoerzen@complete.org>  Wed, 28 Jan 2009 13:39:01 -0600
+ -- John Goerzen <jgoerzen@complete.org>  Fri, 30 Jan 2009 14:47:21 -0600
 
 hdbc-odbc (1.1.6.0.1) unstable; urgency=high
 
