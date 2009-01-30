@@ -48,7 +48,8 @@ Executable runtests
     Buildable: True
   else
     Buildable: False
-  Build-Depends: HUnit, QuickCheck, testpack, containers
+  Build-Depends: HUnit, QuickCheck, testpack, containers, old-time,
+                 time, old-locale, convertible
   Main-Is: runtests.hs
   Other-Modules: Database.HDBC.ODBC,
     Database.HDBC.ODBC.Connection,
