@@ -17,14 +17,24 @@ Description: unixODBC HDBC (Haskell Database Connectivity) Driver for GHC
  .
  This package provides the ODBC database driver for HDBC under GHC.
 
-Package: libhugs-hdbc-odbc
-Section: libs
-Architecture: any
-Depends: libhugs-hdbc (>= 1.1.6.1), ${haskell:Depends}, ${shlibs:Depends}, ${misc:Depends}
-Description: unixODBC HDBC (Haskell Database Connectivity) Driver for Hugs
+#Package: libhugs-hdbc-odbc
+#Section: libs
+#Architecture: any
+#Depends: libhugs-hdbc (>= 1.1.6.1), ${haskell:Depends}, ${shlibs:Depends}, ${misc:Depends}
+#Description: unixODBC HDBC (Haskell Database Connectivity) Driver for Hugs
+# HDBC provides an abstraction layer between Haskell programs and SQL
+# relational databases. This lets you write database code once, in
+# Haskell, and have it work with any number of backend SQL databases
+# (MySQL, Oracle, PostgreSQL, ODBC-compliant databases, etc.)
+# .
+# This package provides the ODBC database driver for HDBC under Hugs.
+
+Package: haskell-hdbc-odbc-doc
+Section: doc
+Architecture: all
+Depends: ${haskell:Depends}, ${shlibs:Depends}, ${misc:Depends}
+Description: Sqlite v3 HDBC (Haskell Database Connectivity) ODBC Documentation
  HDBC provides an abstraction layer between Haskell programs and SQL
  relational databases. This lets you write database code once, in
  Haskell, and have it work with any number of backend SQL databases
  (MySQL, Oracle, PostgreSQL, ODBC-compliant databases, etc.)
- .
- This package provides the ODBC database driver for HDBC under Hugs.
