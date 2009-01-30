@@ -1,5 +1,5 @@
 {- -*- mode: haskell; -*- 
-Copyright (C) 2005 John Goerzen <jgoerzen@complete.org>
+Copyright (C) 2005-2009 John Goerzen <jgoerzen@complete.org>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -21,6 +21,7 @@ import Foreign.C.String
 import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Int
+import Database.HDBC(throwSqlError)
 import Database.HDBC.Types
 import Database.HDBC.ODBC.Types
 import Foreign.C.Types
