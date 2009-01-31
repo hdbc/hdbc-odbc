@@ -1,3 +1,9 @@
+hdbc-odbc (2.0.0.0-2) unstable; urgency=low
+
+  * Added missing build-deps.  Closes: #513694.
+
+ -- John Goerzen <jgoerzen@complete.org>  Sat, 31 Jan 2009 09:35:29 -0600
+
 hdbc-odbc (2.0.0.0-1) unstable; urgency=low
 
   * New upstream release.
