@@ -15,8 +15,10 @@ dateTimeTypeOfSqlValue (SqlZonedLocalTimeOfDay _ _) = "time with time zone"
 dateTimeTypeOfSqlValue (SqlLocalTime _) = "timestamp without time zone"
 dateTimeTypeOfSqlValue (SqlZonedTime _) = "timestamp with time zone"
 dateTimeTypeOfSqlValue (SqlUTCTime _) = "timestamp with time zone"
-dateTimeTypeOfSqlValue (SqlDiffTime _) = "integer"
-dateTimeTypeOfSqlValue (SqlPOSIXTime _) = "integer"
+dateTimeTypeOfSqlValue (SqlDiffTime _) = "numeric"
+dateTimeTypeOfSqlValue (SqlPOSIXTime _) = "numeric"
 dateTimeTypeOfSqlValue (SqlEpochTime _) = "integer"
-dateTimeTypeOfSqlValue (SqlTimeDiff _) = "integer"
+dateTimeTypeOfSqlValue (SqlTimeDiff _) = "numeric"
 dateTimeTypeOfSqlValue _ = "text"
+
+supportsFracTime = True
