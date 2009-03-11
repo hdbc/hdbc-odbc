@@ -48,10 +48,10 @@ Library
 Executable runtests
   if flag(buildtests)
     Buildable: True
+    Build-Depends: HUnit, QuickCheck, testpack, containers, old-time,
+                   time, old-locale, convertible
   else
     Buildable: False
-  Build-Depends: HUnit, QuickCheck, testpack, containers, old-time,
-                 time, old-locale, convertible
   Main-Is: runtests.hs
   Other-Modules: Database.HDBC.ODBC,
     Database.HDBC.ODBC.Connection,
