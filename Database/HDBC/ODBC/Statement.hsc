@@ -281,9 +281,15 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                return (stmt, Just res)
     where getCol cstmt icol =
              do let defaultLen = 128
+                colinfo <- readMVar (colinfomv sstate)
+                let cBinding = case colType (snd (colinfo !! ((fromIntegral icol) - 1))) of
+                                 SqlBinaryT -> #{const SQL_C_BINARY}
+                                 SqlVarBinaryT -> #{const SQL_C_BINARY}
+                                 SqlLongVarBinaryT -> #{const SQL_C_BINARY}
+                                 _ -> #{const SQL_CHAR}
                 alloca $ \plen ->
                  allocaBytes defaultLen $ \buf ->
-                   do res <- sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR}
+                   do res <- sqlGetData cstmt (fromIntegral icol) cBinding
                                         buf (fromIntegral defaultLen) plen
                       case res of
                         #{const SQL_SUCCESS} ->
@@ -297,7 +303,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                         #{const SQL_SUCCESS_WITH_INFO} ->
                             do len <- peek plen
                                allocaBytes (fromIntegral len + 1) $ \buf2 ->
-                                 do sqlGetData cstmt (fromIntegral icol) #{const SQL_CHAR}
+                                 do sqlGetData cstmt (fromIntegral icol) cBinding
                                                buf2 (fromIntegral len + 1) plen
                                                >>= checkError "sqlGetData" (StmtHandle cstmt)
                                     bs <- liftM2 (B.append) (B.packCString buf)
