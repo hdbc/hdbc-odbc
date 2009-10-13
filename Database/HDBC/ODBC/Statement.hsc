@@ -297,7 +297,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                case len of
                                  #{const SQL_NULL_DATA} -> return SqlNull
                                  #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                                 len -> do bs <- B.packCString buf
+                                 len -> do bs <- B.packCStringLen (buf, fromIntegral len)
                                            l $ "col is: " ++ show (BUTF8.toString bs)
                                            return (SqlByteString bs)
                         #{const SQL_SUCCESS_WITH_INFO} ->
@@ -306,8 +306,9 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                  do sqlGetData cstmt (fromIntegral icol) cBinding
                                                buf2 (fromIntegral len + 1) plen
                                                >>= checkError "sqlGetData" (StmtHandle cstmt)
-                                    bs <- liftM2 (B.append) (B.packCString buf)
-                                          (B.packCString buf2)
+                                    len2 <- peek plen
+                                    bs <- liftM2 (B.append) (B.packCStringLen (buf, fromIntegral len))
+                                          (B.packCStringLen (buf2, fromIntegral len2))
                                     l $ "col is: " ++ (BUTF8.toString bs)
                                     return (SqlByteString bs)
                         res -> raiseError "sqlGetData" res (StmtHandle cstmt)
