@@ -307,7 +307,10 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                                buf2 (fromIntegral len + 1) plen
                                                >>= checkError "sqlGetData" (StmtHandle cstmt)
                                     len2 <- peek plen
-                                    bs <- liftM2 (B.append) (B.packCStringLen (buf, defaultLen))
+                                    let firstbuf = case cBinding of
+                                                     #{const SQL_C_BINARY} -> defaultLen
+                                                     _ -> defaultLen - 1 -- strip off NUL
+                                    bs <- liftM2 (B.append) (B.packCStringLen (buf, firstbuf))
                                           (B.packCStringLen (buf2, fromIntegral len2))
                                     l $ "col is: " ++ (BUTF8.toString bs)
                                     return (SqlByteString bs)
