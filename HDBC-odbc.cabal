@@ -1,5 +1,5 @@
 Name: HDBC-odbc
-Version: 2.1.0.0
+Version: 2.2.0.0
 Cabal-Version: >=1.2.3
 Build-type: Simple
 License: LGPL
@@ -33,7 +33,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base, mtl, HDBC>=2.1.0, utf8-string, bytestring
+  Build-Depends: base >= 3 && < 5, mtl, HDBC>=2.1.0, utf8-string, bytestring
   if impl(ghc >= 6.9)
     Build-Depends: base >= 4
   GHC-Options: -O2
