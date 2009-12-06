@@ -1,3 +1,9 @@
+hdbc-odbc (2.2.0.0-2) unstable; urgency=low
+
+  * Use hlibrary.mk (Closes: 559653)
+
+ -- Joachim Breitner <nomeata@debian.org>  Sun, 06 Dec 2009 21:04:56 +0100
+
 hdbc-odbc (2.2.0.0-1) unstable; urgency=low
 
   * New upstream release with better support for binary fields.
