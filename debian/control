@@ -10,6 +10,7 @@ Build-Depends:
  cdbs,
  cpphs,
  haddock,
+ hscolour,
  libghc6-hdbc-dev (>= 2.2.0-2),
  unixodbc-dev (>= 2.2.11),
  libghc6-mtl-dev,
