@@ -1,3 +1,10 @@
+hdbc-odbc (2.2.0.0-4) UNRELEASED; urgency=low
+
+  * Fix wrong description; said "Sqlite v3", thx to Josh Triplett for spotting
+    it." (Closes: #560909)
+
+ -- Joachim Breitner <nomeata@debian.org>  Sun, 13 Dec 2009 18:48:33 +0100
+
 hdbc-odbc (2.2.0.0-3) unstable; urgency=low
 
   * Forgot hscolour dependency 
