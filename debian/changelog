@@ -1,9 +1,11 @@
-hdbc-odbc (2.2.0.0-4) UNRELEASED; urgency=low
+hdbc-odbc (2.2.3.0-1) unstable; urgency=low
 
-  * Fix wrong description; said "Sqlite v3", thx to Josh Triplett for spotting
-    it." (Closes: #560909)
+  * Rebuilt with latest GHC 6.12.
+  * New upstream release.
+  * from Joachim Breitner: Fix wrong description; said "Sqlite v3", thx
+    to Josh Triplett for spotting it. (Closes: #560909)
 
- -- Joachim Breitner <nomeata@debian.org>  Sun, 13 Dec 2009 18:48:33 +0100
+ -- John Goerzen <jgoerzen@complete.org>  Wed, 17 Feb 2010 15:26:09 -0600
 
 hdbc-odbc (2.2.0.0-3) unstable; urgency=low
 
