@@ -1,5 +1,5 @@
 Name: HDBC-odbc
-Version: 2.2.0.0
+Version: 2.2.3.0
 Cabal-Version: >=1.2.3
 Build-type: Simple
 License: LGPL
@@ -7,7 +7,13 @@ Maintainer: John Goerzen <jgoerzen@complete.org>
 Author: John Goerzen
 Copyright: Copyright (c) 2005-2009 John Goerzen
 license-file: COPYRIGHT
-extra-source-files: COPYING, hdbc-odbc-helper.h
+extra-source-files: COPYING, hdbc-odbc-helper.h,
+                    Makefile,
+                    README.txt,
+                    TODO,
+                    testsrc/COPYING,
+                    testsrc/COPYRIGHT,
+                    testsrc/TestTime.hs
 homepage: http://software.complete.org/hdbc-odbc
 Category: Database
 synopsis: ODBC driver for HDBC
@@ -33,9 +39,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base >= 3 && < 5, mtl, HDBC>=2.1.0, utf8-string, bytestring
-  if impl(ghc >= 6.9)
-    Build-Depends: base >= 4
+  Build-Depends: base >= 4 && < 5, mtl, HDBC>=2.1.0, utf8-string, bytestring
   GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(mingw32) || os(win32)
