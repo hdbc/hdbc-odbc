@@ -39,9 +39,7 @@ Library
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
-  Build-Depends: base >= 3 && < 5, mtl, HDBC>=2.1.0, utf8-string, bytestring
-  if impl(ghc >= 6.9)
-    Build-Depends: base >= 4
+  Build-Depends: base >= 4 && < 5, mtl, HDBC>=2.1.0, utf8-string, bytestring
   GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(mingw32) || os(win32)
