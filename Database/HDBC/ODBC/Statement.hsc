@@ -113,14 +113,17 @@ wrapTheStmt iconn fsthptr =
 
 fgettables iconn =
     do fsthptr <- makesth iconn "fgettables"
+       l "fgettables: after makesth"
        withStmt fsthptr (\sthptr ->
                              simpleSqlTables sthptr >>=
                                 checkError "gettables simpleSqlTables" 
                                                (StmtHandle sthptr)
                         )
+       l "fgettables: after withStmt"
        sth <- wrapTheStmt iconn fsthptr
+       l "fgettables: after wrapTheStmt"
        results <- fetchAllRows' sth
-       l (show results)
+       l ("fgettables: results: " ++ (show results))
        return $ map (\x -> fromSql (x !! 2)) results
 
 fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) $ 
@@ -282,6 +285,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
     where getCol cstmt icol =
              do let defaultLen = 128
                 colinfo <- readMVar (colinfomv sstate)
+                l $ "getCol: colinfo is " ++ show colinfo ++ ", icol " ++ show icol
                 let cBinding = case colType (snd (colinfo !! ((fromIntegral icol) - 1))) of
                                  SqlBinaryT -> #{const SQL_C_BINARY}
                                  SqlVarBinaryT -> #{const SQL_C_BINARY}
