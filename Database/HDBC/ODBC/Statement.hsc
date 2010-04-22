@@ -109,7 +109,7 @@ wrapTheStmt iconn fsthptr =
        sstate <- newSState iconn ""
        swapMVar (stomv sstate) (Just fsthptr)
        let sth = wrapStmt sstate
-       return sth
+       return (sth, sstate)
 
 fgettables iconn =
     do fsthptr <- makesth iconn "fgettables"
@@ -120,7 +120,8 @@ fgettables iconn =
                                                (StmtHandle sthptr)
                         )
        l "fgettables: after withStmt"
-       sth <- wrapTheStmt iconn fsthptr
+       (sth, sstate) <- wrapTheStmt iconn fsthptr
+       withStmt fsthptr (\sthptr -> fgetcolinfo sthptr >>= swapMVar (colinfomv sstate))
        l "fgettables: after wrapTheStmt"
        results <- fetchAllRows' sth
        l ("fgettables: results: " ++ (show results))
