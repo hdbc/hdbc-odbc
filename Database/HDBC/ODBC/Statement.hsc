@@ -135,7 +135,8 @@ fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) 
                                checkError "fdescribetable simpleSqlColumns"
                                           (StmtHandle sthptr)
                         )
-       (sth, _) <- wrapTheStmt iconn fsthptr
+       (sth, sstate) <- wrapTheStmt iconn fsthptr
+       withStmt fsthptr (\sthptr -> fgetcolinfo sthptr >>= swapMVar (colinfomv sstate))
        results <- fetchAllRows' sth
        l (show results)
        return $ map fromOTypeCol results
