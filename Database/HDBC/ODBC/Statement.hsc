@@ -279,6 +279,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                        else do l "getting stuff"
                                checkError "sqlFetch" (StmtHandle cstmt) rc
                                ncols <- getNumResultCols cstmt
+                               l $ "ncols: " ++ show ncols
                                res <- mapM (getCol cstmt ) 
                                       [1..ncols]
                                return (stmt, Just res)
