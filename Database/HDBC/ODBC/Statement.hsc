@@ -135,7 +135,7 @@ fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) 
                                checkError "fdescribetable simpleSqlColumns"
                                           (StmtHandle sthptr)
                         )
-       sth <- wrapTheStmt iconn fsthptr
+       (sth, _) <- wrapTheStmt iconn fsthptr
        results <- fetchAllRows' sth
        l (show results)
        return $ map fromOTypeCol results
