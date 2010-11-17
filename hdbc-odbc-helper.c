@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include "hdbc-odbc-helper.h"
 
-SQLINTEGER nullDataHDBC = SQL_NULL_DATA;
+SQLLEN nullDataHDBC = SQL_NULL_DATA;
 
 char *emptyBuffer = "";
 

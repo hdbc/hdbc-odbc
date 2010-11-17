@@ -43,8 +43,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 
-l _ = return ()
---l m = hPutStrLn stderr ("\n" ++ m)
+--l _ = return ()
+l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -248,7 +248,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
        l $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
-                    do -- We have to get an empty buffer.  Sigh.
+                    do l "Binding null"
                        rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
                               #{const SQL_C_CHAR} #{const SQL_VARCHAR} 1 0
@@ -401,7 +401,7 @@ foreign import #{CALLCONV} unsafe "sql.h SQLDescribeCol"
                  -> #{type SQLSMALLINT} -- ^ Buffer length
                  -> Ptr (#{type SQLSMALLINT}) -- ^ name length ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ data type ptr
-                 -> Ptr (#{type SQLUINTEGER}) -- ^ column size ptr
+                 -> Ptr (#{type SQLULEN}) -- ^ column size ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ decimal digits ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ nullable ptr
                  -> IO #{type SQLRETURN}
@@ -411,8 +411,8 @@ foreign import #{CALLCONV} unsafe "sql.h SQLGetData"
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT} -- ^ target type
              -> CString -- ^ target value pointer (void * in C)
-             -> #{type SQLINTEGER} -- ^ buffer len
-             -> Ptr (#{type SQLINTEGER})
+             -> #{type SQLLEN} -- ^ buffer len
+             -> Ptr (#{type SQLLEN})
              -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
@@ -445,15 +445,15 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
                    -> #{type SQLSMALLINT} -- ^ Input or output
                    -> #{type SQLSMALLINT} -- ^ Value type
                    -> #{type SQLSMALLINT} -- ^ Parameter type
-                   -> #{type SQLUINTEGER} -- ^ column size
+                   -> #{type SQLULEN} -- ^ column size
                    -> #{type SQLSMALLINT} -- ^ decimal digits
                    -> CString   -- ^ Parameter value pointer
-                   -> #{type SQLINTEGER} -- ^ buffer length
-                   -> Ptr #{type SQLINTEGER} -- ^ strlen_or_indptr
+                   -> #{type SQLLEN} -- ^ buffer length
+                   -> Ptr #{type SQLLEN} -- ^ strlen_or_indptr
                    -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &nullDataHDBC"
-  nullDataHDBC :: Ptr #{type SQLINTEGER}
+  nullDataHDBC :: Ptr #{type SQLLEN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &emptyBuffer"
   emptyBuffer :: CString
@@ -463,7 +463,7 @@ foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
   sqlDescribeParam :: Ptr CStmt 
                    -> #{type SQLUSMALLINT} -- ^ parameter number
                    -> Ptr #{type SQLSMALLINT} -- ^ data type ptr
-                   -> Ptr #{type SQLUINTEGER} -- ^ parameter size ptr
+                   -> Ptr #{type SQLULEN} -- ^ parameter size ptr
                    -> Ptr #{type SQLSMALLINT} -- ^ dec digits ptr
                    -> Ptr #{type SQLSMALLINT} -- ^ nullable ptr
                    -> IO #{type SQLRETURN}

@@ -19,9 +19,9 @@ alrows = map (zip colnames) rowdata
 
 setup f = dbTestCase $ \dbh ->
    do run dbh "CREATE TABLE hdbctest2 (testid INTEGER PRIMARY KEY NOT NULL, teststring TEXT, testint INTEGER)" []
-      --sth <- prepare dbh "INSERT INTO hdbctest2 VALUES (?, ?, ?)"
-      --executeMany sth rowdata
-      --commit dbh
+      sth <- prepare dbh "INSERT INTO hdbctest2 VALUES (?, ?, ?)"
+      executeMany sth rowdata
+      commit dbh
       finally (f dbh)
               (do run dbh "DROP TABLE hdbctest2" []
                   commit dbh
