@@ -43,8 +43,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 
---l _ = return ()
-l m = hPutStrLn stderr ("\n" ++ m)
+l _ = return ()
+--l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -260,7 +260,6 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                  -- not freed now, and pass it along...
                   (csptr, cslen) <- cstrUtf8BString (fromSql x)
                   do pcslen <- malloc 
-                     l $ "cslen is " ++ show cslen
                      poke pcslen (fromIntegral cslen)
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
@@ -384,8 +383,8 @@ fexecutemany sstate arglist =
 public_ffinish sstate = 
     do l "public_ffinish"
        modifyMVar_ (stomv sstate) worker
-    where worker Nothing = l "public_ffinish Nothing " >> return Nothing
-          worker (Just sth) = l "public_ffinish freeing" >> ffinish sth >> return Nothing
+    where worker Nothing = return Nothing
+          worker (Just sth) = ffinish sth >> return Nothing
 
 ffinish :: Stmt -> IO ()
 ffinish p = withRawStmt p $ sqlFreeHandleSth_app 

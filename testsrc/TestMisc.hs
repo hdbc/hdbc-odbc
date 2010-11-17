@@ -57,7 +57,6 @@ testdescribeResult = setup $ \dbh -> when (not ((hdbcDriverName dbh) `elem`
 testdescribeTable = setup $ \dbh -> when (not ((hdbcDriverName dbh) `elem`
                                                ["sqlite3"])) $
    do cols <- describeTable dbh "hdbctest2"
-      print cols
       ["testid", "teststring", "testint"] @=? map (map toLower . fst) cols
       let coldata = map snd cols
       assertBool "r0 type" (colType (coldata !! 0) `elem`
@@ -165,12 +164,9 @@ testunicode = setup $ \dbh ->
                   [SqlInt32 102, SqlString (take 263 (repeat 'a')), SqlNull]]
 
 tests = TestList [
-                  TestLabel "get tables1" testgetTables1,
-                  TestLabel "get tables2" testgetTables2,
                   TestLabel "getColumnNames" testgetColumnNames,
                   TestLabel "describeResult" testdescribeResult,
-                  TestLabel "describeTable" testdescribeTable]
-                  {-
+                  TestLabel "describeTable" testdescribeTable,
                   TestLabel "quickQuery" testquickQuery,
                   TestLabel "fetchRowAL" testfetchRowAL,
                   TestLabel "fetchRowMap" testfetchRowMap,
@@ -179,6 +175,7 @@ tests = TestList [
                   TestLabel "sql exception" testexception,
                   TestLabel "clone" testclone,
                   TestLabel "update rowcount" testrowcount,
+                  TestLabel "get tables1" testgetTables1,
+                  TestLabel "get tables2" testgetTables2,
                   TestLabel "nulls" testnulls,
                   TestLabel "unicode" testunicode]
--}
