@@ -43,8 +43,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 
-l _ = return ()
---l m = hPutStrLn stderr ("\n" ++ m)
+--l _ = return ()
+l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -174,7 +174,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
                             \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l "in fexecute"
+    do l $ "in fexecute: " ++ show args
        public_ffinish sstate  
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
@@ -188,6 +188,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
 
        argsToFree <- zipWithM (bindCol sthptr) args [1..]
 
+       l $ "Ready for sqlExecute: " ++ show args
        r <- sqlExecute sthptr
             
        -- Our bound columns must be valid through this point,
@@ -378,8 +379,8 @@ fexecutemany sstate arglist =
 public_ffinish sstate = 
     do l "public_ffinish"
        modifyMVar_ (stomv sstate) worker
-    where worker Nothing = return Nothing
-          worker (Just sth) = ffinish sth >> return Nothing
+    where worker Nothing = l "public_ffinish Nothing " >> return Nothing
+          worker (Just sth) = l "public_ffinish freeing" >> ffinish sth >> return Nothing
 
 ffinish :: Stmt -> IO ()
 ffinish p = withRawStmt p $ sqlFreeHandleSth_app 
