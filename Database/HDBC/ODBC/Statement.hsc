@@ -249,10 +249,11 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
        l $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
-                    do rc2 <- sqlBindParameter sthptr (fromIntegral icol)
+                    do -- We have to get an empty buffer.  Sigh.
+                       rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
                               #{const SQL_C_CHAR} coltype colsize decdigits
-                              nullPtr 0 nullData
+                              emptyBuffer 0 nullData
                        checkError ("bindparameter " ++ show icol)
                                       (StmtHandle sthptr) rc2
                        return []
@@ -454,6 +455,10 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &nullData"
   nullData :: Ptr #{type SQLINTEGER}
+
+foreign import ccall unsafe "hdbc-odbc-helper.h &emptyBuffer"
+  emptyBuffer :: CString
+
 
 foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
   sqlDescribeParam :: Ptr CStmt 
