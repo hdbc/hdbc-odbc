@@ -454,10 +454,6 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
 foreign import ccall unsafe "hdbc-odbc-helper.h &nullDataHDBC"
   nullDataHDBC :: Ptr #{type SQLLEN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &emptyBuffer"
-  emptyBuffer :: CString
-
-
 foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
   sqlDescribeParam :: Ptr CStmt 
                    -> #{type SQLUSMALLINT} -- ^ parameter number
