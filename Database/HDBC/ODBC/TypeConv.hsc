@@ -40,7 +40,7 @@ import System.IO
 import Data.Maybe
 
 l _ = return ()
---l m = hPutStrLn stderr ("\n" ++ m)
+-- l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -51,7 +51,7 @@ l _ = return ()
 
 fromOTypeInfo :: String         -- ^ Column name
               -> #{type SQLSMALLINT} -- ^ Data type
-              -> #{type SQLUINTEGER} -- ^ Column size
+              -> #{type SQLULEN}     -- ^ Column size
               -> #{type SQLSMALLINT} -- ^ Is it nullable
               -> (String, SqlColDesc)
 fromOTypeInfo colname datatype colsize nullable =

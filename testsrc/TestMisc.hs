@@ -163,7 +163,8 @@ testunicode = setup $ \dbh ->
                   [SqlInt32 101, SqlString "bar\x00A3", SqlNull],
                   [SqlInt32 102, SqlString (take 263 (repeat 'a')), SqlNull]]
 
-tests = TestList [TestLabel "getColumnNames" testgetColumnNames,
+tests = TestList [
+                  TestLabel "getColumnNames" testgetColumnNames,
                   TestLabel "describeResult" testdescribeResult,
                   TestLabel "describeTable" testdescribeTable,
                   TestLabel "quickQuery" testquickQuery,

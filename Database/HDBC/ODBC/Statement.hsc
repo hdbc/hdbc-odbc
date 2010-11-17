@@ -174,7 +174,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
                             \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l "in fexecute"
+    do l $ "in fexecute: " ++ show (squery sstate) ++ show args
        public_ffinish sstate  
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
@@ -188,11 +188,12 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
 
        argsToFree <- zipWithM (bindCol sthptr) args [1..]
 
+       l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
        r <- sqlExecute sthptr
             
        -- Our bound columns must be valid through this point,
        -- but we don't care after here.
-       mapM (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
+       mapM_ (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
                 (concat argsToFree) 
 
        case r of
@@ -233,8 +234,10 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
    So, make sure we either free of have foreignized everything before
    control passes out of this function. -}
 
-    do rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
+    do l $ "Binding col " ++ show icol ++ ": " ++ show arg
+       rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
                       pnullable
+       l $ "rc1 is " ++ show (isOK rc1)
        when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
              poke pcolsize 0
@@ -242,13 +245,15 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
        coltype <- peek pdtype
        colsize <- peek pcolsize
        decdigits <- peek pdecdigits
+       l $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
-                    do rc2 <- sqlBindParameter sthptr (fromIntegral icol)
+                    do l "Binding null"
+                       rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
                               #{const SQL_C_CHAR} coltype colsize decdigits
-                              nullPtr 0 nullData
-                       checkError ("bindparameter " ++ show icol)
+                              nullPtr 0 nullDataHDBC
+                       checkError ("bindparameter NULL " ++ show icol)
                                       (StmtHandle sthptr) rc2
                        return []
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
@@ -395,7 +400,7 @@ foreign import #{CALLCONV} unsafe "sql.h SQLDescribeCol"
                  -> #{type SQLSMALLINT} -- ^ Buffer length
                  -> Ptr (#{type SQLSMALLINT}) -- ^ name length ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ data type ptr
-                 -> Ptr (#{type SQLUINTEGER}) -- ^ column size ptr
+                 -> Ptr (#{type SQLULEN}) -- ^ column size ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ decimal digits ptr
                  -> Ptr (#{type SQLSMALLINT}) -- ^ nullable ptr
                  -> IO #{type SQLRETURN}
@@ -405,8 +410,8 @@ foreign import #{CALLCONV} unsafe "sql.h SQLGetData"
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT} -- ^ target type
              -> CString -- ^ target value pointer (void * in C)
-             -> #{type SQLINTEGER} -- ^ buffer len
-             -> Ptr (#{type SQLINTEGER})
+             -> #{type SQLLEN} -- ^ buffer len
+             -> Ptr (#{type SQLLEN})
              -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
@@ -439,21 +444,21 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
                    -> #{type SQLSMALLINT} -- ^ Input or output
                    -> #{type SQLSMALLINT} -- ^ Value type
                    -> #{type SQLSMALLINT} -- ^ Parameter type
-                   -> #{type SQLUINTEGER} -- ^ column size
+                   -> #{type SQLULEN} -- ^ column size
                    -> #{type SQLSMALLINT} -- ^ decimal digits
                    -> CString   -- ^ Parameter value pointer
-                   -> #{type SQLINTEGER} -- ^ buffer length
-                   -> Ptr #{type SQLINTEGER} -- ^ strlen_or_indptr
+                   -> #{type SQLLEN} -- ^ buffer length
+                   -> Ptr #{type SQLLEN} -- ^ strlen_or_indptr
                    -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &nullData"
-  nullData :: Ptr #{type SQLINTEGER}
+foreign import ccall unsafe "hdbc-odbc-helper.h &nullDataHDBC"
+  nullDataHDBC :: Ptr #{type SQLLEN}
 
 foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
   sqlDescribeParam :: Ptr CStmt 
                    -> #{type SQLUSMALLINT} -- ^ parameter number
                    -> Ptr #{type SQLSMALLINT} -- ^ data type ptr
-                   -> Ptr #{type SQLUINTEGER} -- ^ parameter size ptr
+                   -> Ptr #{type SQLULEN} -- ^ parameter size ptr
                    -> Ptr #{type SQLSMALLINT} -- ^ dec digits ptr
                    -> Ptr #{type SQLSMALLINT} -- ^ nullable ptr
                    -> IO #{type SQLRETURN}
