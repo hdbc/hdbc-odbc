@@ -43,8 +43,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 
---l _ = return ()
-l m = hPutStrLn stderr ("\n" ++ m)
+l _ = return ()
+--l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -251,9 +251,9 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                     do -- We have to get an empty buffer.  Sigh.
                        rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
-                              #{const SQL_C_CHAR} coltype colsize decdigits
-                              emptyBuffer 0 nullData
-                       checkError ("bindparameter " ++ show icol)
+                              #{const SQL_C_CHAR} #{const SQL_VARCHAR} 1 0
+                              nullPtr 0 nullDataHDBC
+                       checkError ("bindparameter NULL " ++ show icol)
                                       (StmtHandle sthptr) rc2
                        return []
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
@@ -265,7 +265,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
                        #{const SQL_C_CHAR} coltype 
-                       ({- if isOK rc1 then colsize else -} fromIntegral cslen + 1) decdigits
+                       (if isOK rc1 then colsize else fromIntegral cslen + 1) decdigits
                        csptr (fromIntegral cslen + 1) pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
@@ -452,8 +452,8 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
                    -> Ptr #{type SQLINTEGER} -- ^ strlen_or_indptr
                    -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &nullData"
-  nullData :: Ptr #{type SQLINTEGER}
+foreign import ccall unsafe "hdbc-odbc-helper.h &nullDataHDBC"
+  nullDataHDBC :: Ptr #{type SQLINTEGER}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h &emptyBuffer"
   emptyBuffer :: CString

@@ -19,9 +19,9 @@ alrows = map (zip colnames) rowdata
 
 setup f = dbTestCase $ \dbh ->
    do run dbh "CREATE TABLE hdbctest2 (testid INTEGER PRIMARY KEY NOT NULL, teststring TEXT, testint INTEGER)" []
-      sth <- prepare dbh "INSERT INTO hdbctest2 VALUES (?, ?, ?)"
-      executeMany sth rowdata
-      commit dbh
+      --sth <- prepare dbh "INSERT INTO hdbctest2 VALUES (?, ?, ?)"
+      --executeMany sth rowdata
+      --commit dbh
       finally (f dbh)
               (do run dbh "DROP TABLE hdbctest2" []
                   commit dbh
@@ -57,6 +57,7 @@ testdescribeResult = setup $ \dbh -> when (not ((hdbcDriverName dbh) `elem`
 testdescribeTable = setup $ \dbh -> when (not ((hdbcDriverName dbh) `elem`
                                                ["sqlite3"])) $
    do cols <- describeTable dbh "hdbctest2"
+      print cols
       ["testid", "teststring", "testint"] @=? map (map toLower . fst) cols
       let coldata = map snd cols
       assertBool "r0 type" (colType (coldata !! 0) `elem`
@@ -163,9 +164,13 @@ testunicode = setup $ \dbh ->
                   [SqlInt32 101, SqlString "bar\x00A3", SqlNull],
                   [SqlInt32 102, SqlString (take 263 (repeat 'a')), SqlNull]]
 
-tests = TestList [TestLabel "getColumnNames" testgetColumnNames,
+tests = TestList [
+                  TestLabel "get tables1" testgetTables1,
+                  TestLabel "get tables2" testgetTables2,
+                  TestLabel "getColumnNames" testgetColumnNames,
                   TestLabel "describeResult" testdescribeResult,
-                  TestLabel "describeTable" testdescribeTable,
+                  TestLabel "describeTable" testdescribeTable]
+                  {-
                   TestLabel "quickQuery" testquickQuery,
                   TestLabel "fetchRowAL" testfetchRowAL,
                   TestLabel "fetchRowMap" testfetchRowMap,
@@ -174,7 +179,6 @@ tests = TestList [TestLabel "getColumnNames" testgetColumnNames,
                   TestLabel "sql exception" testexception,
                   TestLabel "clone" testclone,
                   TestLabel "update rowcount" testrowcount,
-                  TestLabel "get tables1" testgetTables1,
-                  TestLabel "get tables2" testgetTables2,
                   TestLabel "nulls" testnulls,
                   TestLabel "unicode" testunicode]
+-}
