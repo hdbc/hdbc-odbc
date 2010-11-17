@@ -10,8 +10,6 @@
 
 SQLLEN nullDataHDBC = SQL_NULL_DATA;
 
-char *emptyBuffer = "";
-
 int sqlSucceeded(SQLRETURN ret) {
   return SQL_SUCCEEDED(ret);
 }

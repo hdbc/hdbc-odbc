@@ -26,7 +26,6 @@ extern void sqlFreeHandleSth_app(finalizeonce *res);
 extern void sqlFreeHandleSth_finalizer(finalizeonce *res);
 
 extern SQLLEN nullDataHDBC;
-extern char *emptyBuffer;
 extern void *getSqlOvOdbc3(void);
 
 extern SQLRETURN disableAutoCommit(SQLHDBC conn);
