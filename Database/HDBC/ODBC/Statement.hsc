@@ -238,8 +238,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
                       pnullable
        l $ "rc1 is " ++ show (isOK rc1)
-       when True $
-       -- when (not (isOK rc1)) $ -- Some drivers don't support that call
+       when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
              poke pcolsize 0
              poke pdecdigits 0
