@@ -35,7 +35,7 @@ dropTable = dbTestCase (\dbh ->
                        )
 
 runReplace = dbTestCase (\dbh ->
-    do -- sRun dbh "INSERT INTO hdbctest1 VALUES (?, ?, ?, ?)" r1
+    do sRun dbh "INSERT INTO hdbctest1 VALUES (?, ?, ?, ?)" r1
        sRun dbh "INSERT INTO hdbctest1 VALUES (?, ?, 2, ?)" r2
        commit dbh
        sth <- prepare dbh "SELECT * FROM hdbctest1 WHERE testname = 'runReplace' ORDER BY testid"
@@ -136,10 +136,10 @@ testWithTransaction = dbTestCase (\dbh ->
        
 tests = TestList
         [
-         --TestLabel "openClosedb" openClosedb,
-         --TestLabel "multiFinish" multiFinish,
-         --TestLabel "basicQueries" basicQueries,
-         --TestLabel "createTable" createTable,
+         TestLabel "openClosedb" openClosedb,
+         TestLabel "multiFinish" multiFinish,
+         TestLabel "basicQueries" basicQueries,
+         TestLabel "createTable" createTable,
          TestLabel "runReplace" runReplace,
          TestLabel "executeReplace" executeReplace,
          TestLabel "executeMany" testExecuteMany,
