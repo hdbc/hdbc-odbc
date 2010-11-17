@@ -251,7 +251,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                     do l "Binding null"
                        rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
-                              #{const SQL_C_CHAR} #{const SQL_VARCHAR} 1 0
+                              #{const SQL_C_CHAR} coltype colsize decdigits
                               nullPtr 0 nullDataHDBC
                        checkError ("bindparameter NULL " ++ show icol)
                                       (StmtHandle sthptr) rc2
