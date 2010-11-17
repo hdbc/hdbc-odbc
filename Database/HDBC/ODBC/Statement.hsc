@@ -174,7 +174,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
                             \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l $ "in fexecute: " ++ show args
+    do l $ "in fexecute: " ++ show (squery sstate) ++ show args
        public_ffinish sstate  
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
@@ -188,12 +188,12 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
 
        argsToFree <- zipWithM (bindCol sthptr) args [1..]
 
-       l $ "Ready for sqlExecute: " ++ show args
+       l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
        r <- sqlExecute sthptr
             
        -- Our bound columns must be valid through this point,
        -- but we don't care after here.
-       mapM (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
+       mapM_ (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
                 (concat argsToFree) 
 
        case r of
@@ -234,15 +234,19 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
    So, make sure we either free of have foreignized everything before
    control passes out of this function. -}
 
-    do rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
+    do l $ "Binding col " ++ show icol ++ ": " ++ show arg
+       rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
                       pnullable
-       when (not (isOK rc1)) $ -- Some drivers don't support that call
+       l $ "rc1 is " ++ show (isOK rc1)
+       when True $
+       -- when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
              poke pcolsize 0
              poke pdecdigits 0
        coltype <- peek pdtype
        colsize <- peek pcolsize
        decdigits <- peek pdecdigits
+       l $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
                     do rc2 <- sqlBindParameter sthptr (fromIntegral icol)
@@ -256,11 +260,12 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                  -- not freed now, and pass it along...
                   (csptr, cslen) <- cstrUtf8BString (fromSql x)
                   do pcslen <- malloc 
+                     l $ "cslen is " ++ show cslen
                      poke pcslen (fromIntegral cslen)
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
                        #{const SQL_C_CHAR} coltype 
-                       (if isOK rc1 then colsize else fromIntegral cslen + 1) decdigits
+                       ({- if isOK rc1 then colsize else -} fromIntegral cslen + 1) decdigits
                        csptr (fromIntegral cslen + 1) pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.

@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include "hdbc-odbc-helper.h"
 
+#define HDBC_DEBUG 1
+
 SQLINTEGER nullData = SQL_NULL_DATA;
 
 int sqlSucceeded(SQLRETURN ret) {
