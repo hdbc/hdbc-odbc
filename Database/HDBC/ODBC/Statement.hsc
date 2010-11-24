@@ -57,33 +57,6 @@ l _ = return ()
 #else
 #let CALLCONV = "ccall"
 #endif
-fGetQueryInfo iconn children query =
-    do l "in fGetQueryInfo"
-       sstate <- newSState iconn query
-       addChild children (wrapStmt sstate)   -- We get error if we forget this one. Not sure why.
-       fakeExecute' sstate
-
-fakeExecute' sstate  = withConn (dbo sstate) $ \cconn ->
-                       withCStringLen (squery sstate) $ \(cquery, cqlen) ->
-                       alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l "in fexecute"
-       -- public_ffinish sstate  
-       rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
-       sthptr <- peek psthptr
-       wrappedsthptr <- withRawConn (dbo sstate)
-                        (\rawconn -> wrapstmt sthptr rawconn)
-       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError "execute allocHandle" (DbcHandle cconn) rc1
-
-       sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
-            checkError "execute prepare" (StmtHandle sthptr)
-
-       -- parmCount <- getNumParams sthptr
-       parmInfo <- fgetparminfo sthptr
-       
-       -- rc <- getNumResultCols sthptr
-       colInfo <- fgetcolinfo sthptr
-       return (parmInfo, colInfo)
 
 data SState = 
     SState { stomv :: MVar (Maybe Stmt),
@@ -472,31 +445,3 @@ foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlTables"
 foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlColumns"
   simpleSqlColumns :: Ptr CStmt -> Ptr CChar -> 
                       #{type SQLSMALLINT} -> IO #{type SQLRETURN}
-
-fgetparminfo cstmt =
-    do ncols <- getNumParams cstmt
-       mapM getname [1..ncols]
-    where getname icol = -- alloca $ \colnamelp ->
-                         -- allocaBytes 128 $ \cscolname ->
-                         alloca $ \datatypeptr ->
-                         alloca $ \colsizeptr ->
-                         alloca $ \nullableptr ->
-              do poke datatypeptr 127 -- to test if sqlDescribeParam actually writes something to the area
-                 res <- sqlDescribeParam cstmt (fromInteger $ toInteger icol) -- cscolname 127 colnamelp 
-                                  datatypeptr colsizeptr nullPtr nullableptr
-                 putStrLn $ show res
-                 -- We need proper error handling here. Not all ODBC drivers supports SQLDescribeParam.
-                 -- Not supporting SQLDescribeParam is quite allright according to the ODBC standard.
-                 datatype <- peek datatypeptr
-                 colsize  <- peek colsizeptr
-                 nullable <- peek nullableptr
-                 return $ snd $ fromOTypeInfo "" datatype colsize nullable
-
-getNumParams sthptr = alloca $ \pcount ->
-    do sqlNumParams sthptr pcount >>= checkError "SQLNumResultCols" 
-                                          (StmtHandle sthptr)
-       peek pcount
-
-foreign import ccall unsafe "sql.h SQLNumParams"
-  sqlNumParams :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
-               -> IO #{type SQLRETURN}
