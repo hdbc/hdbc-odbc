@@ -497,6 +497,6 @@ getNumParams sthptr = alloca $ \pcount ->
                                           (StmtHandle sthptr)
        peek pcount
 
-foreign import ccall unsafe "sql.h SQLNumParams"
+foreign import #{CALLCONV} unsafe "sql.h SQLNumParams"
   sqlNumParams :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
                -> IO #{type SQLRETURN}
