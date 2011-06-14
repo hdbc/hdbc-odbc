@@ -239,7 +239,7 @@ getNumResultCols sthptr = alloca $ \pcount ->
 
 -- Bind a parameter column before execution.
 bindCol :: Ptr CStmt -> SqlValue -> Word16
-        -> IO [(ForeignPtr (), ForeignPtr CChar)]
+        -> IO [(ForeignPtr #{type SQLLEN}, ForeignPtr CChar)]
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
@@ -290,7 +290,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                         then do -- We bound it.  Make foreignPtrs and return.
                                 fp1 <- newForeignPtr finalizerFree pcslen
                                 fp2 <- newForeignPtr finalizerFree csptr
-                                return [(castForeignPtr fp1, fp2)]
+                                return [(fp1, fp2)]
                         else do -- Binding failed.  Free the data and raise
                                 -- error.
                                 free pcslen
