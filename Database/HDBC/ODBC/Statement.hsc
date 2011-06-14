@@ -93,11 +93,13 @@ fakeExecute' sstate  = withConn (dbo sstate) $ \cconn ->
        colInfo <- fgetcolinfo sthptr
        return (parmInfo, colInfo)
 
-data SState = 
-    SState { stomv :: MVar (Maybe Stmt),
-             dbo :: Conn,
-             squery :: String,
-             colinfomv :: MVar [(String, SqlColDesc)]}
+-- | The Stament State
+data SState = SState
+  { stomv     :: MVar (Maybe Stmt)
+  , dbo       :: Conn
+  , squery    :: String
+  , colinfomv :: MVar [(String, SqlColDesc)]
+  }
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
@@ -105,23 +107,26 @@ newSState :: Conn -> String -> IO SState
 newSState indbo query =
     do newstomv <- newMVar Nothing
        newcolinfomv <- newMVar []
-       return SState {stomv = newstomv, 
-                      dbo = indbo, squery = query,
-                      colinfomv = newcolinfomv}
+       return SState
+         { stomv     = newstomv
+         , dbo       = indbo
+         , squery    = query
+         , colinfomv = newcolinfomv
+         }
 
 wrapStmt :: SState -> Statement
-wrapStmt sstate =
-    Statement {execute = fexecute sstate,
-                           executeMany = fexecutemany sstate,
-                           finish = public_ffinish sstate,
-                           fetchRow = ffetchrow sstate,
-                           originalQuery = (squery sstate),
-                           getColumnNames = readMVar (colinfomv sstate)
-                                            >>= (return . map fst),
-                           describeResult = readMVar (colinfomv sstate)}
+wrapStmt sstate = Statement
+  { execute        = fexecute sstate
+  , executeMany    = fexecutemany sstate
+  , finish         = public_ffinish sstate
+  , fetchRow       = ffetchrow sstate
+  , originalQuery  = (squery sstate)
+  , getColumnNames = readMVar (colinfomv sstate) >>= (return . map fst)
+  , describeResult = readMVar (colinfomv sstate)
+  }
 
-newSth :: Conn -> ChildList -> String -> IO Statement               
-newSth indbo mchildren query = 
+newSth :: Conn -> ChildList -> String -> IO Statement
+newSth indbo mchildren query =
     do l "in newSth"
        sstate <- newSState indbo query
        let retval = wrapStmt sstate
@@ -183,12 +188,12 @@ fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
 fexecute :: SState -> [SqlValue] -> IO Integer
-fexecute sstate args = withConn (dbo sstate) $ \cconn ->
-                       B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
-                            \(cquery, cqlen) ->
-                       alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
+fexecute sstate args =
+  withConn (dbo sstate) $ \cconn ->
+  B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) ->
+  alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
     do l $ "in fexecute: " ++ show (squery sstate) ++ show args
-       public_ffinish sstate  
+       public_ffinish sstate
        rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
        sthptr <- peek psthptr
        wrappedsthptr <- withRawConn (dbo sstate)
@@ -203,7 +208,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
 
        l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
        r <- sqlExecute sthptr
-            
+
        -- Our bound columns must be valid through this point,
        -- but we don't care after here.
        mapM_ (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
@@ -214,7 +219,7 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
          x -> checkError "execute execute" (StmtHandle sthptr) x
 
        rc <- getNumResultCols sthptr
-       
+
        case rc of
          0 -> do rowcount <- getSqlRowCount sthptr
                  ffinish fsthptr
@@ -231,10 +236,10 @@ getNumResultCols sthptr = alloca $ \pcount ->
     do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" 
                                           (StmtHandle sthptr)
        peek pcount
-    
+
 -- Bind a parameter column before execution.
 bindCol :: Ptr CStmt -> SqlValue -> Word16
-        -> IO [(ForeignPtr Int32, ForeignPtr CChar)]
+        -> IO [(ForeignPtr (), ForeignPtr CChar)]
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
@@ -251,8 +256,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
 
     do l $ "Binding col " ++ show icol ++ ": " ++ show arg
        --TODO: seems like we ought to know the param type from inspecting the SqlValue
-       rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
-                      pnullable
+       rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits pnullable
        l $ "rc1 is " ++ show (isOK rc1)
        when (not (isOK rc1)) $ -- Some drivers don't support that call
           do poke pdtype #{const SQL_CHAR}
@@ -286,7 +290,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                         then do -- We bound it.  Make foreignPtrs and return.
                                 fp1 <- newForeignPtr finalizerFree pcslen
                                 fp2 <- newForeignPtr finalizerFree csptr
-                                return [(fp1, fp2)]
+                                return [(castForeignPtr fp1, fp2)]
                         else do -- Binding failed.  Free the data and raise
                                 -- error.
                                 free pcslen
