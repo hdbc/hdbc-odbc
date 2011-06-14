@@ -18,13 +18,20 @@ Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
     License along with this library; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 -}
-module Database.HDBC.ODBC.Statement where
+module Database.HDBC.ODBC.Statement (
+   fGetQueryInfo,
+   newSth,
+   fgettables,
+   fdescribetable
+ ) where
+
 import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
 import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Utils
 import Database.HDBC.ODBC.TypeConv
+
 import Foreign.C.Types
 import Foreign.ForeignPtr
 import Foreign.Ptr
@@ -33,16 +40,13 @@ import Foreign.C.String
 import Foreign.Marshal
 import Foreign.Storable
 import Control.Monad
-import Data.List
 import Data.Word
 import Data.Int
-import Control.Exception
-import System.IO
-import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 
+l :: String -> IO ()
 l _ = return ()
 --l m = hPutStrLn stderr ("\n" ++ m)
 
@@ -57,12 +61,16 @@ l _ = return ()
 #else
 #let CALLCONV = "ccall"
 #endif
+
+fGetQueryInfo :: Conn -> ChildList -> String
+              -> IO ([SqlColDesc], [(String, SqlColDesc)])
 fGetQueryInfo iconn children query =
     do l "in fGetQueryInfo"
        sstate <- newSState iconn query
        addChild children (wrapStmt sstate)   -- We get error if we forget this one. Not sure why.
        fakeExecute' sstate
 
+fakeExecute' :: SState -> IO ([SqlColDesc], [(String, SqlColDesc)])
 fakeExecute' sstate  = withConn (dbo sstate) $ \cconn ->
                        withCStringLen (squery sstate) $ \(cquery, cqlen) ->
                        alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
@@ -120,6 +128,7 @@ newSth indbo mchildren query =
        addChild mchildren retval
        return retval
 
+makesth :: Conn -> [Char] -> IO (ForeignPtr WrappedCStmt)
 makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
                      withConn iconn $ \cconn -> 
                      withCString "" $ \emptycs ->
@@ -131,6 +140,7 @@ makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
        checkError (name ++ " allocHandle") (DbcHandle cconn) rc1
        return fsthptr
 
+wrapTheStmt :: Conn -> Stmt -> IO (Statement, SState)
 wrapTheStmt iconn fsthptr =
     do sstate <- newSState iconn ""
        sstate <- newSState iconn ""
@@ -138,6 +148,7 @@ wrapTheStmt iconn fsthptr =
        let sth = wrapStmt sstate
        return (sth, sstate)
 
+fgettables :: Conn -> IO [String]
 fgettables iconn =
     do fsthptr <- makesth iconn "fgettables"
        l "fgettables: after makesth"
@@ -154,6 +165,7 @@ fgettables iconn =
        l ("fgettables: results: " ++ (show results))
        return $ map (\x -> fromSql (x !! 2)) results
 
+fdescribetable :: Conn -> String -> IO [(String, SqlColDesc)]
 fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) $ 
                                  \(cs, csl) ->
     do fsthptr <- makesth iconn "fdescribetable"
@@ -170,6 +182,7 @@ fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) 
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
+fexecute :: SState -> [SqlValue] -> IO Integer
 fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ 
                             \(cquery, cqlen) ->
@@ -213,13 +226,15 @@ fexecute sstate args = withConn (dbo sstate) $ \cconn ->
                         touchForeignPtr fsthptr
                         return 0
 
+getNumResultCols :: Ptr CStmt -> IO Int16
 getNumResultCols sthptr = alloca $ \pcount ->
     do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" 
                                           (StmtHandle sthptr)
        peek pcount
     
 -- Bind a parameter column before execution.
-
+bindCol :: Ptr CStmt -> SqlValue -> Word16
+        -> IO [(ForeignPtr Int32, ForeignPtr CChar)]
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
@@ -235,6 +250,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
    control passes out of this function. -}
 
     do l $ "Binding col " ++ show icol ++ ": " ++ show arg
+       --TODO: seems like we ought to know the param type from inspecting the SqlValue
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits
                       pnullable
        l $ "rc1 is " ++ show (isOK rc1)
@@ -278,10 +294,13 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                                 checkError ("bindparameter " ++ show icol) 
                                                (StmtHandle sthptr) rc2
                                 return [] -- will never get hit
-       
+
+getSqlRowCount :: Ptr CStmt -> IO Int32
 getSqlRowCount cstmt = alloca $ \prows ->
      do sqlRowCount cstmt prows >>= checkError "SQLRowCount" (StmtHandle cstmt)
         peek prows
+        --note: As of ODBC-3.52, the row count is only a C int, ie 32bit.
+
 
 {- General algorithm: find out how many columns we have, check the type
 of each to see if it's NULL.  If it's not, fetch it as text and return that.
@@ -355,7 +374,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                     return (SqlByteString bs)
                         res -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
-
+fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
     do ncols <- getNumResultCols cstmt
        mapM getname [1..ncols]
@@ -380,6 +399,7 @@ fexecutemany sstate arglist =
     mapM_ (fexecute sstate) arglist >> return ()
 
 -- Finish and change state
+public_ffinish :: SState -> IO ()
 public_ffinish sstate = 
     do l "public_ffinish"
        modifyMVar_ (stomv sstate) worker
@@ -473,6 +493,7 @@ foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlColumns"
   simpleSqlColumns :: Ptr CStmt -> Ptr CChar -> 
                       #{type SQLSMALLINT} -> IO #{type SQLRETURN}
 
+fgetparminfo :: Ptr CStmt -> IO [SqlColDesc]
 fgetparminfo cstmt =
     do ncols <- getNumParams cstmt
        mapM getname [1..ncols]
@@ -492,6 +513,7 @@ fgetparminfo cstmt =
                  nullable <- peek nullableptr
                  return $ snd $ fromOTypeInfo "" datatype colsize nullable
 
+getNumParams :: Ptr CStmt -> IO Int16
 getNumParams sthptr = alloca $ \pcount ->
     do sqlNumParams sthptr pcount >>= checkError "SQLNumResultCols" 
                                           (StmtHandle sthptr)
