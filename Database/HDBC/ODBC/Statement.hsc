@@ -42,6 +42,7 @@ import Foreign.Storable
 import Control.Monad
 import Data.Word
 import Data.Int
+import Data.Maybe (catMaybes)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
@@ -204,15 +205,10 @@ fexecute sstate args =
        sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
             checkError "execute prepare" (StmtHandle sthptr)
 
-       argsToFree <- zipWithM (bindCol sthptr) args [1..]
-
+       bindArgs <- zipWithM (bindCol sthptr) args [1..]
        l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
        r <- sqlExecute sthptr
-
-       -- Our bound columns must be valid through this point,
-       -- but we don't care after here.
-       mapM_ (\(x, y) -> touchForeignPtr x >> touchForeignPtr y)
-                (concat argsToFree) 
+       mapM_ (\(x, y) -> free x >> free y) (catMaybes bindArgs)
 
        case r of
          #{const SQL_NO_DATA} -> return () -- Update that did nothing
@@ -239,7 +235,7 @@ getNumResultCols sthptr = alloca $ \pcount ->
 
 -- Bind a parameter column before execution.
 bindCol :: Ptr CStmt -> SqlValue -> Word16
-        -> IO [(ForeignPtr #{type SQLLEN}, ForeignPtr CChar)]
+        -> IO (Maybe (Ptr #{type SQLLEN}, Ptr CChar))
 bindCol sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
@@ -275,7 +271,7 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                               nullPtr 0 nullDataHDBC
                        checkError ("bindparameter NULL " ++ show icol)
                                       (StmtHandle sthptr) rc2
-                       return []
+                       return Nothing
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
                  -- not freed now, and pass it along...
                   (csptr, cslen) <- cstrUtf8BString (fromSql x)
@@ -288,16 +284,14 @@ bindCol sthptr arg icol =  alloca $ \pdtype ->
                        csptr (fromIntegral cslen + 1) pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
-                                fp1 <- newForeignPtr finalizerFree pcslen
-                                fp2 <- newForeignPtr finalizerFree csptr
-                                return [(fp1, fp2)]
+                                return $ Just (pcslen, csptr)
                         else do -- Binding failed.  Free the data and raise
                                 -- error.
                                 free pcslen
                                 free csptr
                                 checkError ("bindparameter " ++ show icol) 
                                                (StmtHandle sthptr) rc2
-                                return [] -- will never get hit
+                                return Nothing -- will never get hit
 
 getSqlRowCount :: Ptr CStmt -> IO Int32
 getSqlRowCount cstmt = alloca $ \prows ->
