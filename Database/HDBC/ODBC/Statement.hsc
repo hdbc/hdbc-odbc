@@ -118,6 +118,7 @@ newSState indbo query =
 wrapStmt :: SState -> Statement
 wrapStmt sstate = Statement
   { execute        = fexecute sstate
+  , executeRaw     = return ()
   , executeMany    = fexecutemany sstate
   , finish         = public_ffinish sstate
   , fetchRow       = ffetchrow sstate
