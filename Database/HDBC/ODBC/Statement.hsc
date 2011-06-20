@@ -1,23 +1,6 @@
 -- -*- mode: haskell; -*-
 {-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
-{-
-Copyright (C) 2005-2006 John Goerzen <jgoerzen@complete.org>
-
-    This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
-    License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Lesser General Public License for more details.
-
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
--}
 module Database.HDBC.ODBC.Statement (
    fGetQueryInfo,
    newSth,
@@ -332,8 +315,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                checkError "sqlFetch" (StmtHandle cstmt) rc
                                ncols <- getNumResultCols cstmt
                                l $ "ncols: " ++ show ncols
-                               res <- mapM (getCol cstmt ) 
-                                      [1..ncols]
+                               res <- mapM (getCol cstmt) [1..ncols]
                                return (stmt, Just res)
     where getCol cstmt icol =
              do let defaultLen = 128
@@ -354,9 +336,9 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                case len of
                                  #{const SQL_NULL_DATA} -> return SqlNull
                                  #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                                 len -> do bs <- B.packCStringLen (buf, fromIntegral len)
-                                           l $ "col is: " ++ show (BUTF8.toString bs)
-                                           return (SqlByteString bs)
+                                 _ -> do bs <- B.packCStringLen (buf, fromIntegral len)
+                                         l $ "col is: " ++ show (BUTF8.toString bs)
+                                         return (SqlByteString bs)
                         #{const SQL_SUCCESS_WITH_INFO} ->
                             do len <- peek plen
                                allocaBytes (fromIntegral len + 1) $ \buf2 ->
@@ -371,7 +353,7 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                           (B.packCStringLen (buf2, fromIntegral len2))
                                     l $ "col is: " ++ (BUTF8.toString bs)
                                     return (SqlByteString bs)
-                        res -> raiseError "sqlGetData" res (StmtHandle cstmt)
+                        _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
