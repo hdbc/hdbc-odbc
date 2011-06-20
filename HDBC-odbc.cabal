@@ -1,18 +1,16 @@
 Name: HDBC-odbc
-Version: 2.2.3.2
+Version: 2.3.0.0
 Cabal-Version: >=1.2.3
 Build-type: Simple
-License: LGPL
+License: BSD3
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Author: John Goerzen
-Copyright: Copyright (c) 2005-2009 John Goerzen
-license-file: COPYRIGHT
-extra-source-files: COPYING, hdbc-odbc-helper.h,
+Copyright: Copyright (c) 2005-2011 John Goerzen
+license-file: LICENSE
+extra-source-files: LICENSE, hdbc-odbc-helper.h,
                     Makefile,
                     README.txt,
                     TODO,
-                    testsrc/COPYING,
-                    testsrc/COPYRIGHT,
                     testsrc/TestTime.hs
 homepage: http://software.complete.org/hdbc-odbc
 Category: Database
