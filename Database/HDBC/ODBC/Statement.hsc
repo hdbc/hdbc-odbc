@@ -1,6 +1,8 @@
 -- -*- mode: haskell; -*-
 {-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
+{-# LANGUAGE EmptyDataDecls #-}
+
 module Database.HDBC.ODBC.Statement (
    fGetQueryInfo,
    newSth,
@@ -15,6 +17,7 @@ import Database.HDBC.ODBC.Types
 import Database.HDBC.ODBC.Utils
 import Database.HDBC.ODBC.TypeConv
 
+import Foreign.C.String (castCUCharToChar)
 import Foreign.C.Types
 import Foreign.ForeignPtr
 import Foreign.Ptr
@@ -25,10 +28,11 @@ import Foreign.Storable
 import Control.Monad
 import Data.Word
 import Data.Int
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
+import Unsafe.Coerce (unsafeCoerce)
 
 l :: String -> IO ()
 l _ = return ()
@@ -83,19 +87,22 @@ data SState = SState
   , dbo       :: Conn
   , squery    :: String
   , colinfomv :: MVar [(String, SqlColDesc)]
+  , bindColsMV :: MVar [BindCol]
   }
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
 newSState :: Conn -> String -> IO SState
 newSState indbo query =
-    do newstomv <- newMVar Nothing
+    do newstomv     <- newMVar Nothing
        newcolinfomv <- newMVar []
+       newBindCols  <- newMVar []
        return SState
-         { stomv     = newstomv
-         , dbo       = indbo
-         , squery    = query
-         , colinfomv = newcolinfomv
+         { stomv      = newstomv
+         , dbo        = indbo
+         , squery     = query
+         , colinfomv  = newcolinfomv
+         , bindColsMV = newBindCols
          }
 
 wrapStmt :: SState -> Statement
@@ -189,7 +196,7 @@ fexecute sstate args =
        sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
             checkError "execute prepare" (StmtHandle sthptr)
 
-       bindArgs <- zipWithM (bindCol sthptr) args [1..]
+       bindArgs <- zipWithM (bindParam sthptr) args [1..]
        l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
        r <- sqlExecute sthptr
        mapM_ (\(x, y) -> free x >> free y) (catMaybes bindArgs)
@@ -211,16 +218,16 @@ fexecute sstate args =
                         touchForeignPtr fsthptr
                         return 0
 
-getNumResultCols :: Ptr CStmt -> IO Int16
+getNumResultCols :: Ptr CStmt -> IO #{type SQLSMALLINT}
 getNumResultCols sthptr = alloca $ \pcount ->
     do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" 
                                           (StmtHandle sthptr)
        peek pcount
 
 -- Bind a parameter column before execution.
-bindCol :: Ptr CStmt -> SqlValue -> Word16
+bindParam :: Ptr CStmt -> SqlValue -> Word16
         -> IO (Maybe (Ptr #{type SQLLEN}, Ptr CChar))
-bindCol sthptr arg icol =  alloca $ \pdtype ->
+bindParam sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
                            alloca $ \pdecdigits ->
                            alloca $ \pnullable ->
@@ -301,7 +308,10 @@ cstrUtf8BString bs = do
 
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> 
+ffetchrow = ffetchrowGetData
+
+ffetchrowGetData :: SState -> IO (Maybe [SqlValue])
+ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt -> 
              case stmt of
                Nothing -> l "ffr nos" >> return (stmt, Nothing)
                Just cmstmt -> withStmt cmstmt $ \cstmt ->
@@ -355,6 +365,189 @@ ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt ->
                                     return (SqlByteString bs)
                         _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
+ffetchrowBindCol :: SState -> IO (Maybe [SqlValue])
+ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
+  case stmt of
+    Nothing -> do
+      l "ffetchrowBindCol"
+      return (stmt, Nothing)
+    Just cmstmt -> withStmt cmstmt $ \cstmt -> do
+      bindCols <- getBindCols sstate cstmt
+      rc <- sqlFetch cstmt
+      if rc == #{const SQL_NO_DATA}
+        then do
+          l "ffetchrowBindCol: no more rows"
+          ffinish cmstmt
+          return (Nothing, Nothing)
+        else do
+          l "ffetchrowBindcol: fetching data"
+          checkError "sqlFetch" (StmtHandle cstmt) rc
+          sqlValues <- mapM bindColToSqlValue bindCols
+          return (stmt, Just sqlValues)
+
+getBindCols :: SState -> Ptr CStmt -> IO [BindCol]
+getBindCols sstate cstmt = do
+  bindCols <- readMVar (bindColsMV sstate)
+  case bindCols of
+    [] -> do cols <- getNumResultCols cstmt
+             pBindCols <- mapM (bindCol sstate cstmt) [1 .. cols]
+             putMVar (bindColsMV sstate) pBindCols
+             return pBindCols
+    _  -> return bindCols
+
+data ColBuf
+
+data BindCol
+  = BindColString  (Ptr CChar) Int
+  | BindColWString (Ptr CWchar) Int
+  | BindColChar    (Ptr CUChar)
+  | BindColWChar   (Ptr CWchar)
+  | BindColUnknown (Ptr CChar) (Ptr #{type SQLLEN})
+
+-- | This function binds the data in a column to a value of type
+-- BindCol, using the default conversion scheme described here:
+--     http://msdn.microsoft.com/en-us/library/ms716298(v=VS.85).aspx
+-- The corresponding C types are here:
+--     http://msdn.microsoft.com/en-us/library/ms714556(v=VS.85).aspx
+-- These values are then ready for fetching.
+-- Documentation about SQLBindCol can be found here:
+--     http://msdn.microsoft.com/en-us/library/ms711010(v=vs.85).aspx
+--
+-- Our implementation follows this code:
+--     http://publib.boulder.ibm.com/infocenter/iseries/v5r3/index.jsp?topic=%2Fcli%2Frzadpfndecol.htm
+-- We have to make use of the column type and length information.
+-- These are given by SQLDescribeCol, which is stored in colinfomv.
+-- SQLDescribeCol can tell use the data type, and the size of a column (in
+-- characters, so add 1 for the null terminator), or the number of decimal
+-- digits that can be held.
+-- To find out type, and how much memory to allocate, we could also use:
+--    SQLColAttribute( ..., SQL_DESC_TYPE , ... )
+--    SQLColAttribute( ..., SQL_DESC_OCTET_LENGTH , ... )
+--
+-- Further examples of how to use SQLBindCol are here, though these make use
+-- of SQLDescribeCol:
+--     http://msdn.microsoft.com/en-us/library/ms710118(v=vs.85).aspx
+-- This implementation makes use of Column-Wise binding. Further improvements
+-- might be had by using Row-Wise binding.
+bindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO BindCol
+bindCol sstate cstmt col = do
+  colInfo <- readMVar (colinfomv sstate)
+  let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
+  case colType colDesc of
+    SqlCharT          -> bindColString    cstmt col' (colSize colDesc)
+    SqlVarCharT       -> bindColString    cstmt col' (colSize colDesc)
+    SqlLongVarCharT   -> bindColString    cstmt col' (colSize colDesc)
+    SqlWCharT         -> bindColWString   cstmt col' (colSize colDesc)
+    SqlWVarCharT      -> bindColWString   cstmt col' (colSize colDesc)
+    SqlWLongVarCharT  -> bindColWString   cstmt col' (colSize colDesc)
+    SqlDecimalT       -> bindColString    cstmt col' (colSize colDesc)
+    SqlNumericT       -> bindColString    cstmt col' (colSize colDesc)
+    SqlBitT           -> bindColBit       cstmt col' (colSize colDesc)
+    SqlTinyIntT       -> bindColTinyInt   cstmt col' (colSize colDesc)
+    SqlSmallIntT      -> bindColShort     cstmt col' (colSize colDesc)
+    SqlIntegerT       -> bindColLong      cstmt col' (colSize colDesc)
+    SqlBigIntT        -> bindColBigInt    cstmt col' (colSize colDesc)
+    SqlRealT          -> bindColFloat     cstmt col' (colSize colDesc)
+    SqlFloatT         -> bindColDouble    cstmt col' (colSize colDesc)
+    SqlDoubleT        -> bindColDouble    cstmt col' (colSize colDesc)
+    SqlBinaryT        -> bindColBinary    cstmt col' (colSize colDesc)
+    SqlVarBinaryT     -> bindColBinary    cstmt col' (colSize colDesc)
+    SqlLongVarBinaryT -> bindColBinary    cstmt col' (colSize colDesc)
+    SqlDateT          -> bindColDate      cstmt col' (colSize colDesc)
+    SqlTimeT          -> bindColTime      cstmt col' (colSize colDesc)
+    SqlTimestampT     -> bindColTimestamp cstmt col' (colSize colDesc)
+    SqlIntervalT i    -> bindColInterval  cstmt col' (colSize colDesc) i
+    SqlGUIDT          -> bindColGUID      cstmt col' (colSize colDesc)
+    SqlUnknownT s     -> bindColUnknown   cstmt col' (colSize colDesc) s
+    _                 -> bindColUnknown   cstmt col' (colSize colDesc) "Unknown"
+-- The following are not supported by ODBC:
+--    SqlUTCDateTimeT
+--    SqlUTCTimeT
+--    SqlTimeWithZoneT
+--    SqlTimestampWithZoneT
+ where
+  col' = fromIntegral col
+
+-- The functions which follow do the marshalling from C into a Haskell type
+
+bindColString cstmt col mColSize = do
+  let colSize = fromMaybe 128 mColSize
+  let bufLen  = sizeOf (undefined :: CChar) * colSize
+  buf     <- mallocBytes bufLen
+  pStrLen <- malloc
+  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  strLen <- peek pStrLen
+  free pStrLen
+  return $ BindColString buf (fromIntegral strLen)
+
+bindColWString cstmt col mColSize = do
+  let colSize = fromMaybe 128 mColSize
+  let bufLen  = sizeOf (undefined :: CChar) * colSize
+  buf     <- mallocBytes bufLen
+  pStrLen <- malloc
+  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  strLen <- peek pStrLen
+  free pStrLen
+  return $ BindColString buf (fromIntegral strLen)
+
+bindColBit cstmt col mColSize = undefined
+bindColTinyInt cstmt col mColSize = undefined
+bindColShort cstmt col mColSize = undefined
+bindColLong cstmt col mColSize = undefined
+bindColBigInt cstmt col mColSize = undefined
+bindColFloat cstmt col mColSize = undefined
+bindColDouble cstmt col mColSize = undefined
+bindColBinary cstmt col mColSize = undefined
+bindColDate cstmt col mColSize = undefined
+bindColTime cstmt col mColSize = undefined
+bindColTimestamp cstmt col mColSize = undefined
+bindColInterval cstmt col mColSize = undefined
+bindColGUID cstmt col mColSize = undefined
+
+bindColUnknown cstmt col mColSize str = do
+  let bufLen = 128
+  buf <- mallocBytes bufLen
+  pStrLen <- malloc
+  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return $ BindColUnknown buf pStrLen
+
+freeBindCol :: BindCol -> IO ()
+freeBindCol (BindColChar buf) = free buf
+
+bindColToSqlValue :: BindCol -> IO SqlValue
+bindColToSqlValue (BindColChar buf) = do
+  val <- peek buf
+  return $ SqlChar $ castCUCharToChar val
+bindColToSqlValue (BindColUnknown buf pStrLen) = do
+  strLen <- peek pStrLen
+  bs <- B.packCStringLen (buf, fromIntegral strLen)
+  return $ SqlByteString bs
+
+-- Each of these types must eventually correspond to one of the following
+-- SqlValue members:
+-- SqlString String	
+-- SqlByteString ByteString	
+-- SqlWord32 Word32	
+-- SqlWord64 Word64	
+-- SqlInt32 Int32	
+-- SqlInt64 Int64	
+-- SqlInteger Integer	
+-- SqlBool Bool	
+-- SqlDouble Double	
+-- SqlRational Rational	
+-- SqlLocalDate Day	Local YYYY-MM-DD (no timezone)
+-- SqlLocalTimeOfDay TimeOfDay	Local HH:MM:SS (no timezone)
+-- SqlZonedLocalTimeOfDay TimeOfDay TimeZone	Local HH:MM:SS -HHMM. Converts to and from (TimeOfDay, TimeZone).
+-- SqlLocalTime LocalTime	Local YYYY-MM-DD HH:MM:SS (no timezone)
+-- SqlZonedTime ZonedTime	Local YYYY-MM-DD HH:MM:SS -HHMM. Considered equal if both convert to the same UTC time.
+-- SqlUTCTime UTCTime	UTC YYYY-MM-DD HH:MM:SS
+-- SqlDiffTime NominalDiffTime	Calendar diff between seconds. Rendered as Integer when converted to String, but greater precision may be preserved for other types or to underlying database.
+-- SqlPOSIXTime POSIXTime	Time as seconds since midnight Jan 1 1970 UTC. Integer rendering as for SqlDiffTime.
+-- SqlEpochTime Integer	DEPRECATED Representation of ClockTime or CalendarTime. Use SqlPOSIXTime instead.
+-- SqlTimeDiff Integer	DEPRECATED Representation of TimeDiff. Use SqlDiffTime instead.
+-- SqlNull
+
+
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
     do ncols <- getNumResultCols cstmt
@@ -387,8 +580,9 @@ public_ffinish sstate =
     where worker Nothing = return Nothing
           worker (Just sth) = ffinish sth >> return Nothing
 
+-- TODO: Free the column memory
 ffinish :: Stmt -> IO ()
-ffinish p = withRawStmt p $ sqlFreeHandleSth_app 
+ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
 
 
 foreign import ccall unsafe "hdbc-odbc-helper.h wrapobjodbc"
@@ -413,6 +607,15 @@ foreign import #{CALLCONV} unsafe "sql.h SQLGetData"
              -> CString -- ^ target value pointer (void * in C)
              -> #{type SQLLEN} -- ^ buffer len
              -> Ptr (#{type SQLLEN})
+             -> IO #{type SQLRETURN}
+
+foreign import #{CALLCONV} unsafe "sql.h SQLBindCol"
+  sqlBindCol :: Ptr CStmt            -- ^ statement handle
+             -> #{type SQLUSMALLINT} -- ^ Column number
+             -> #{type SQLSMALLINT}  -- ^ target type
+             -> Ptr ColBuf           -- ^ target value pointer (void * in C)
+             -> #{type SQLLEN}       -- ^ buffer len
+             -> Ptr (#{type SQLLEN}) -- ^ strlen_or_indptr
              -> IO #{type SQLRETURN}
 
 foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
