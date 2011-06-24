@@ -393,7 +393,7 @@ getBindCols sstate cstmt = do
   bindCols <- readMVar (bindColsMV sstate)
   case bindCols of
     [] -> do cols <- getNumResultCols cstmt
-             pBindCols <- mapM (bindCol sstate cstmt) [1 .. cols]
+             pBindCols <- mapM (mkBindCol sstate cstmt) [1 .. cols]
              putMVar (bindColsMV sstate) pBindCols
              return pBindCols
     _  -> return bindCols
@@ -510,37 +510,37 @@ data BindCol
 --     http://msdn.microsoft.com/en-us/library/ms710118(v=vs.85).aspx
 -- This implementation makes use of Column-Wise binding. Further improvements
 -- might be had by using Row-Wise binding.
-bindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO BindCol
-bindCol sstate cstmt col = do
+mkBindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO BindCol
+mkBindCol sstate cstmt col = do
   colInfo <- readMVar (colinfomv sstate)
   let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
   case colType colDesc of
-    SqlCharT          -> bindColString    cstmt col' (colSize colDesc)
-    SqlVarCharT       -> bindColString    cstmt col' (colSize colDesc)
-    SqlLongVarCharT   -> bindColString    cstmt col' (colSize colDesc)
-    SqlWCharT         -> bindColWString   cstmt col' (colSize colDesc)
-    SqlWVarCharT      -> bindColWString   cstmt col' (colSize colDesc)
-    SqlWLongVarCharT  -> bindColWString   cstmt col' (colSize colDesc)
-    SqlDecimalT       -> bindColString    cstmt col' (colSize colDesc)
-    SqlNumericT       -> bindColString    cstmt col' (colSize colDesc)
-    SqlBitT           -> bindColBit       cstmt col' (colSize colDesc)
-    SqlTinyIntT       -> bindColTinyInt   cstmt col' (colSize colDesc)
-    SqlSmallIntT      -> bindColShort     cstmt col' (colSize colDesc)
-    SqlIntegerT       -> bindColLong      cstmt col' (colSize colDesc)
-    SqlBigIntT        -> bindColBigInt    cstmt col' (colSize colDesc)
-    SqlRealT          -> bindColFloat     cstmt col' (colSize colDesc)
-    SqlFloatT         -> bindColDouble    cstmt col' (colSize colDesc)
-    SqlDoubleT        -> bindColDouble    cstmt col' (colSize colDesc)
-    SqlBinaryT        -> bindColBinary    cstmt col' (colSize colDesc)
-    SqlVarBinaryT     -> bindColBinary    cstmt col' (colSize colDesc)
-    SqlLongVarBinaryT -> bindColBinary    cstmt col' (colSize colDesc)
-    SqlDateT          -> bindColDate      cstmt col' (colSize colDesc)
-    SqlTimeT          -> bindColTime      cstmt col' (colSize colDesc)
-    SqlTimestampT     -> bindColTimestamp cstmt col' (colSize colDesc)
-    SqlIntervalT i    -> bindColInterval  cstmt col' (colSize colDesc) i
-    SqlGUIDT          -> bindColGUID      cstmt col' (colSize colDesc)
-    SqlUnknownT s     -> bindColUnknown   cstmt col' (colSize colDesc) s
-    _                 -> bindColUnknown   cstmt col' (colSize colDesc) "Unknown"
+    SqlCharT          -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlVarCharT       -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlLongVarCharT   -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlWCharT         -> mkBindColWString   cstmt col' (colSize colDesc)
+    SqlWVarCharT      -> mkBindColWString   cstmt col' (colSize colDesc)
+    SqlWLongVarCharT  -> mkBindColWString   cstmt col' (colSize colDesc)
+    SqlDecimalT       -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlNumericT       -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlBitT           -> mkBindColBit       cstmt col' (colSize colDesc)
+    SqlTinyIntT       -> mkBindColTinyInt   cstmt col' (colSize colDesc)
+    SqlSmallIntT      -> mkBindColShort     cstmt col' (colSize colDesc)
+    SqlIntegerT       -> mkBindColLong      cstmt col' (colSize colDesc)
+    SqlBigIntT        -> mkBindColBigInt    cstmt col' (colSize colDesc)
+    SqlRealT          -> mkBindColFloat     cstmt col' (colSize colDesc)
+    SqlFloatT         -> mkBindColDouble    cstmt col' (colSize colDesc)
+    SqlDoubleT        -> mkBindColDouble    cstmt col' (colSize colDesc)
+    SqlBinaryT        -> mkBindColBinary    cstmt col' (colSize colDesc)
+    SqlVarBinaryT     -> mkBindColBinary    cstmt col' (colSize colDesc)
+    SqlLongVarBinaryT -> mkBindColBinary    cstmt col' (colSize colDesc)
+    SqlDateT          -> mkBindColDate      cstmt col' (colSize colDesc)
+    SqlTimeT          -> mkBindColTime      cstmt col' (colSize colDesc)
+    SqlTimestampT     -> mkBindColTimestamp cstmt col' (colSize colDesc)
+    SqlIntervalT i    -> mkBindColInterval  cstmt col' (colSize colDesc) i
+    SqlGUIDT          -> mkBindColGUID      cstmt col' (colSize colDesc)
+    SqlUnknownT s     -> mkBindColUnknown   cstmt col' (colSize colDesc) s
+    _                 -> mkBindColUnknown   cstmt col' (colSize colDesc) "Unknown"
 -- The following are not supported by ODBC:
 --    SqlUTCDateTimeT
 --    SqlUTCTimeT
@@ -550,7 +550,7 @@ bindCol sstate cstmt col = do
   col' = fromIntegral col
 
 -- The functions that follow do the marshalling from C into a Haskell type
-bindColString cstmt col mColSize = do
+mkBindColString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CChar) * colSize
   buf     <- mallocBytes bufLen
@@ -558,7 +558,7 @@ bindColString cstmt col mColSize = do
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
   return $ BindColString buf pStrLen
 
-bindColWString cstmt col mColSize = do
+mkBindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * colSize
   buf     <- mallocBytes bufLen
@@ -566,21 +566,21 @@ bindColWString cstmt col mColSize = do
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
   return $ BindColWString buf pStrLen
 
-bindColBit cstmt col mColSize = undefined
-bindColTinyInt cstmt col mColSize = undefined
-bindColShort cstmt col mColSize = undefined
-bindColLong cstmt col mColSize = undefined
-bindColBigInt cstmt col mColSize = undefined
-bindColFloat cstmt col mColSize = undefined
-bindColDouble cstmt col mColSize = undefined
-bindColBinary cstmt col mColSize = undefined
-bindColDate cstmt col mColSize = undefined
-bindColTime cstmt col mColSize = undefined
-bindColTimestamp cstmt col mColSize = undefined
-bindColInterval cstmt col mColSize = undefined
-bindColGUID cstmt col mColSize = undefined
+mkBindColBit cstmt col mColSize = undefined
+mkBindColTinyInt cstmt col mColSize = undefined
+mkBindColShort cstmt col mColSize = undefined
+mkBindColLong cstmt col mColSize = undefined
+mkBindColBigInt cstmt col mColSize = undefined
+mkBindColFloat cstmt col mColSize = undefined
+mkBindColDouble cstmt col mColSize = undefined
+mkBindColBinary cstmt col mColSize = undefined
+mkBindColDate cstmt col mColSize = undefined
+mkBindColTime cstmt col mColSize = undefined
+mkBindColTimestamp cstmt col mColSize = undefined
+mkBindColInterval cstmt col mColSize = undefined
+mkBindColGUID cstmt col mColSize = undefined
 
-bindColUnknown cstmt col mColSize str = do
+mkBindColUnknown cstmt col mColSize str = do
   let bufLen = 128
   buf <- mallocBytes bufLen
   pStrLen <- malloc
@@ -601,6 +601,8 @@ freeBindCol (BindColFloat    buf pStrLen) = free buf >> free pStrLen
 freeBindCol (BindColDouble   buf pStrLen) = free buf >> free pStrLen
 freeBindCol (BindColBinary   buf pStrLen) = free buf >> free pStrLen
 
+-- Maybe it's best to separate BindCol and the Ptr StrLen so that
+-- we can check for nulls straight away?
 bindColToSqlValue :: BindCol -> IO SqlValue
 bindColToSqlValue (BindColUnknown buf pStrLen) = do
   strLen <- peek pStrLen
