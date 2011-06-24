@@ -83,11 +83,11 @@ fakeExecute' sstate  = withConn (dbo sstate) $ \cconn ->
 
 -- | The Stament State
 data SState = SState
-  { stomv     :: MVar (Maybe Stmt)
-  , dbo       :: Conn
-  , squery    :: String
-  , colinfomv :: MVar [(String, SqlColDesc)]
-  , bindColsMV :: MVar [BindCol]
+  { stomv      :: MVar (Maybe Stmt)
+  , dbo        :: Conn
+  , squery     :: String
+  , colinfomv  :: MVar [(String, SqlColDesc)]
+  , bindColsMV :: MVar [(BindCol, Ptr #{type SQLLEN})]
   }
 
 -- FIXME: we currently do no prepare optimization whatsoever.
@@ -388,7 +388,7 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
           sqlValues <- mapM bindColToSqlValue bindCols
           return (stmt, Just sqlValues)
 
-getBindCols :: SState -> Ptr CStmt -> IO [BindCol]
+getBindCols :: SState -> Ptr CStmt -> IO [(BindCol, Ptr #{type SQLLEN})]
 getBindCols sstate cstmt = do
   bindCols <- readMVar (bindColsMV sstate)
   case bindCols of
@@ -401,17 +401,17 @@ getBindCols sstate cstmt = do
 data ColBuf
 
 data BindCol
-  = BindColString  (Ptr CChar)   (Ptr #{type SQLLEN})
-  | BindColWString (Ptr CWchar)  (Ptr #{type SQLLEN})
-  | BindColUnknown (Ptr CChar)   (Ptr #{type SQLLEN})
-  | BindColBit     (Ptr CUChar)  (Ptr #{type SQLLEN})
-  | BindColTinyInt (Ptr CChar)   (Ptr #{type SQLLEN})
-  | BindColShort   (Ptr CShort)  (Ptr #{type SQLLEN})
-  | BindColLong    (Ptr CLong)   (Ptr #{type SQLLEN})
-  | BindColBigInt  (Ptr CInt)    (Ptr #{type SQLLEN}) -- TODO: _int64
-  | BindColFloat   (Ptr CFloat)  (Ptr #{type SQLLEN})
-  | BindColDouble  (Ptr CDouble) (Ptr #{type SQLLEN})
-  | BindColBinary  (Ptr CUChar)  (Ptr #{type SQLLEN})
+  = BindColString  (Ptr CChar)
+  | BindColWString (Ptr CWchar)
+  | BindColUnknown (Ptr CChar)
+  | BindColBit     (Ptr CUChar)
+  | BindColTinyInt (Ptr CChar)
+  | BindColShort   (Ptr CShort)
+  | BindColLong    (Ptr CLong)
+  | BindColBigInt  (Ptr CInt)    -- TODO: _int64
+  | BindColFloat   (Ptr CFloat)
+  | BindColDouble  (Ptr CDouble)
+  | BindColBinary  (Ptr CUChar)
   | BindColDate -- TODO
 -- struct tagDATE_STRUCT {
 --    SQLSMALLINT year;
@@ -483,8 +483,6 @@ data BindCol
 --    BYTE Data4[8];
 -- } SQLGUID;[k]
 
-
-
 -- | This function binds the data in a column to a value of type
 -- BindCol, using the default conversion scheme described here:
 --     http://msdn.microsoft.com/en-us/library/ms716298(v=VS.85).aspx
@@ -510,7 +508,7 @@ data BindCol
 --     http://msdn.microsoft.com/en-us/library/ms710118(v=vs.85).aspx
 -- This implementation makes use of Column-Wise binding. Further improvements
 -- might be had by using Row-Wise binding.
-mkBindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO BindCol
+mkBindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO (BindCol, Ptr #{type SQLLEN})
 mkBindCol sstate cstmt col = do
   colInfo <- readMVar (colinfomv sstate)
   let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
@@ -556,7 +554,7 @@ mkBindColString cstmt col mColSize = do
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  return $ BindColString buf pStrLen
+  return (BindColString buf, pStrLen)
 
 mkBindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
@@ -564,7 +562,7 @@ mkBindColWString cstmt col mColSize = do
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  return $ BindColWString buf pStrLen
+  return (BindColWString buf, pStrLen)
 
 mkBindColBit cstmt col mColSize = undefined
 mkBindColTinyInt cstmt col mColSize = undefined
@@ -582,30 +580,36 @@ mkBindColGUID cstmt col mColSize = undefined
 
 mkBindColUnknown cstmt col mColSize str = do
   let bufLen = 128
-  buf <- mallocBytes bufLen
+  buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  return $ BindColUnknown buf pStrLen
+  return (BindColUnknown buf, pStrLen)
 
 freeBindCol :: BindCol -> IO ()
-freeBindCol (BindColString   buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColString   buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColWString  buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColUnknown  buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColBit      buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColTinyInt  buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColShort    buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColLong     buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColBigInt   buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColFloat    buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColDouble   buf pStrLen) = free buf >> free pStrLen
-freeBindCol (BindColBinary   buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColString   buf) = free buf
+freeBindCol (BindColString   buf) = free buf
+freeBindCol (BindColWString  buf) = free buf
+freeBindCol (BindColUnknown  buf) = free buf
+freeBindCol (BindColBit      buf) = free buf
+freeBindCol (BindColTinyInt  buf) = free buf
+freeBindCol (BindColShort    buf) = free buf
+freeBindCol (BindColLong     buf) = free buf
+freeBindCol (BindColBigInt   buf) = free buf
+freeBindCol (BindColFloat    buf) = free buf
+freeBindCol (BindColDouble   buf) = free buf
+freeBindCol (BindColBinary   buf) = free buf
 
 -- Maybe it's best to separate BindCol and the Ptr StrLen so that
 -- we can check for nulls straight away?
-bindColToSqlValue :: BindCol -> IO SqlValue
-bindColToSqlValue (BindColUnknown buf pStrLen) = do
+bindColToSqlValue :: (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
+bindColToSqlValue (bindCol, pStrLen) = do
   strLen <- peek pStrLen
+  case strLen of
+    #{const SQL_NO_DATA}   -> undefined
+    #{const SQL_NULL_DATA} -> return SqlNull
+    _                      -> bindColToSqlValue' bindCol strLen
+
+bindColToSqlValue' (BindColUnknown buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
   return $ SqlByteString bs
 
