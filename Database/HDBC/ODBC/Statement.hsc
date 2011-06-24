@@ -365,6 +365,9 @@ ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt ->
                                     return (SqlByteString bs)
                         _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
+-- TODO: Check the return values of SQLFetch
+-- TODO: Fix behaviour when strlen returns 0 (which indicates that SQLGetData
+-- is needed)
 ffetchrowBindCol :: SState -> IO (Maybe [SqlValue])
 ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
   case stmt of
@@ -398,11 +401,91 @@ getBindCols sstate cstmt = do
 data ColBuf
 
 data BindCol
-  = BindColString  (Ptr CChar) Int
-  | BindColWString (Ptr CWchar) Int
+  = BindColString  (Ptr CChar) (Ptr #{type SQLLEN})
+  | BindColWString (Ptr CWchar) (Ptr #{type SQLLEN})
   | BindColChar    (Ptr CUChar)
   | BindColWChar   (Ptr CWchar)
   | BindColUnknown (Ptr CChar) (Ptr #{type SQLLEN})
+  | BindColBit     (Ptr CUChar)
+  | BindColTinyInt (Ptr CChar)
+  | BindColShort   (Ptr CShort)
+  | BindColLong    (Ptr CLong)
+  | BindColBigInt  (Ptr CInt) -- TODO: _int64
+  | BindColFloat   (Ptr CFloat)
+  | BindColDouble  (Ptr CDouble)
+  | BindColBinary  (Ptr CUChar) (Ptr #{type SQLLEN})
+  | BindColDate
+-- struct tagDATE_STRUCT {
+--    SQLSMALLINT year;
+--    SQLUSMALLINT month;
+--    SQLUSMALLINT day;  
+-- } DATE_STRUCT;[a]
+  | BindColTime
+-- struct tagTIME_STRUCT {
+--    SQLUSMALLINT hour;
+--    SQLUSMALLINT minute;
+--    SQLUSMALLINT second;
+-- } TIME_STRUCT;[a]
+  | BindColTimestamp
+-- struct tagTIMESTAMP_STRUCT {
+--    SQLSMALLINT year;
+--    SQLUSMALLINT month;
+--    SQLUSMALLINT day;
+--    SQLUSMALLINT hour;
+--    SQLUSMALLINT minute;
+--    SQLUSMALLINT second;
+--    SQLUINTEGER fraction;[b] 
+-- } TIMESTAMP_STRUCT;[a]
+  | BindColInterval
+-- typedef struct tagSQL_INTERVAL_STRUCT
+-- {
+--    SQLINTERVAL interval_type; 
+--    SQLSMALLINT interval_sign;
+--    union {
+--          SQL_YEAR_MONTH_STRUCT   year_month;
+--          SQL_DAY_SECOND_STRUCT   day_second;
+--          } intval;
+-- } SQL_INTERVAL_STRUCT;
+-- typedef enum 
+-- {
+--    SQL_IS_YEAR = 1,
+--    SQL_IS_MONTH = 2,
+--    SQL_IS_DAY = 3,
+--    SQL_IS_HOUR = 4,
+--    SQL_IS_MINUTE = 5,
+--    SQL_IS_SECOND = 6,
+--    SQL_IS_YEAR_TO_MONTH = 7,
+--    SQL_IS_DAY_TO_HOUR = 8,
+--    SQL_IS_DAY_TO_MINUTE = 9,
+--    SQL_IS_DAY_TO_SECOND = 10,
+--    SQL_IS_HOUR_TO_MINUTE = 11,
+--    SQL_IS_HOUR_TO_SECOND = 12,
+--    SQL_IS_MINUTE_TO_SECOND = 13
+-- } SQLINTERVAL;
+-- 
+-- typedef struct tagSQL_YEAR_MONTH
+-- {
+--    SQLUINTEGER year;
+--    SQLUINTEGER month; 
+-- } SQL_YEAR_MONTH_STRUCT;
+-- 
+-- typedef struct tagSQL_DAY_SECOND
+-- {
+--    SQLUINTEGER day;
+--    SQLUINTEGER hour;
+--    SQLUINTEGER minute;
+--    SQLUINTEGER second;
+--    SQLUINTEGER fraction;
+-- } SQL_DAY_SECOND_STRUCT;
+  | BindColGUID
+-- struct tagSQLGUID {
+--    DWORD Data1;
+--    WORD Data2;
+--    WORD Data3;
+--    BYTE Data4[8];
+-- } SQLGUID;[k]
+
+
 
 -- | This function binds the data in a column to a value of type
 -- BindCol, using the default conversion scheme described here:
@@ -468,17 +551,14 @@ bindCol sstate cstmt col = do
  where
   col' = fromIntegral col
 
--- The functions which follow do the marshalling from C into a Haskell type
-
+-- The functions that follow do the marshalling from C into a Haskell type
 bindColString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CChar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  strLen <- peek pStrLen
-  free pStrLen
-  return $ BindColString buf (fromIntegral strLen)
+  return $ BindColString buf pStrLen
 
 bindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
@@ -486,9 +566,7 @@ bindColWString cstmt col mColSize = do
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  strLen <- peek pStrLen
-  free pStrLen
-  return $ BindColString buf (fromIntegral strLen)
+  return $ BindColString buf pStrLen
 
 bindColBit cstmt col mColSize = undefined
 bindColTinyInt cstmt col mColSize = undefined
@@ -525,6 +603,7 @@ bindColToSqlValue (BindColUnknown buf pStrLen) = do
 
 -- Each of these types must eventually correspond to one of the following
 -- SqlValue members:
+-- SqlChar Char
 -- SqlString String	
 -- SqlByteString ByteString	
 -- SqlWord32 Word32	
