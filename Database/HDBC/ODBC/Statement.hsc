@@ -401,32 +401,30 @@ getBindCols sstate cstmt = do
 data ColBuf
 
 data BindCol
-  = BindColString  (Ptr CChar) (Ptr #{type SQLLEN})
-  | BindColWString (Ptr CWchar) (Ptr #{type SQLLEN})
-  | BindColChar    (Ptr CUChar)
-  | BindColWChar   (Ptr CWchar)
-  | BindColUnknown (Ptr CChar) (Ptr #{type SQLLEN})
-  | BindColBit     (Ptr CUChar)
-  | BindColTinyInt (Ptr CChar)
-  | BindColShort   (Ptr CShort)
-  | BindColLong    (Ptr CLong)
-  | BindColBigInt  (Ptr CInt) -- TODO: _int64
-  | BindColFloat   (Ptr CFloat)
-  | BindColDouble  (Ptr CDouble)
-  | BindColBinary  (Ptr CUChar) (Ptr #{type SQLLEN})
-  | BindColDate
+  = BindColString  (Ptr CChar)   (Ptr #{type SQLLEN})
+  | BindColWString (Ptr CWchar)  (Ptr #{type SQLLEN})
+  | BindColUnknown (Ptr CChar)   (Ptr #{type SQLLEN})
+  | BindColBit     (Ptr CUChar)  (Ptr #{type SQLLEN})
+  | BindColTinyInt (Ptr CChar)   (Ptr #{type SQLLEN})
+  | BindColShort   (Ptr CShort)  (Ptr #{type SQLLEN})
+  | BindColLong    (Ptr CLong)   (Ptr #{type SQLLEN})
+  | BindColBigInt  (Ptr CInt)    (Ptr #{type SQLLEN}) -- TODO: _int64
+  | BindColFloat   (Ptr CFloat)  (Ptr #{type SQLLEN})
+  | BindColDouble  (Ptr CDouble) (Ptr #{type SQLLEN})
+  | BindColBinary  (Ptr CUChar)  (Ptr #{type SQLLEN})
+  | BindColDate -- TODO
 -- struct tagDATE_STRUCT {
 --    SQLSMALLINT year;
 --    SQLUSMALLINT month;
 --    SQLUSMALLINT day;  
 -- } DATE_STRUCT;[a]
-  | BindColTime
+  | BindColTime -- TODO
 -- struct tagTIME_STRUCT {
 --    SQLUSMALLINT hour;
 --    SQLUSMALLINT minute;
 --    SQLUSMALLINT second;
 -- } TIME_STRUCT;[a]
-  | BindColTimestamp
+  | BindColTimestamp -- TODO
 -- struct tagTIMESTAMP_STRUCT {
 --    SQLSMALLINT year;
 --    SQLUSMALLINT month;
@@ -436,7 +434,7 @@ data BindCol
 --    SQLUSMALLINT second;
 --    SQLUINTEGER fraction;[b] 
 -- } TIMESTAMP_STRUCT;[a]
-  | BindColInterval
+  | BindColInterval -- TODO
 -- typedef struct tagSQL_INTERVAL_STRUCT
 -- {
 --    SQLINTERVAL interval_type; 
@@ -477,7 +475,7 @@ data BindCol
 --    SQLUINTEGER second;
 --    SQLUINTEGER fraction;
 -- } SQL_DAY_SECOND_STRUCT;
-  | BindColGUID
+  | BindColGUID -- TODO
 -- struct tagSQLGUID {
 --    DWORD Data1;
 --    WORD Data2;
@@ -562,11 +560,11 @@ bindColString cstmt col mColSize = do
 
 bindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
-  let bufLen  = sizeOf (undefined :: CChar) * colSize
+  let bufLen  = sizeOf (undefined :: CWchar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
-  return $ BindColString buf pStrLen
+  return $ BindColWString buf pStrLen
 
 bindColBit cstmt col mColSize = undefined
 bindColTinyInt cstmt col mColSize = undefined
@@ -590,12 +588,20 @@ bindColUnknown cstmt col mColSize str = do
   return $ BindColUnknown buf pStrLen
 
 freeBindCol :: BindCol -> IO ()
-freeBindCol (BindColChar buf) = free buf
+freeBindCol (BindColString   buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColString   buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColWString  buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColUnknown  buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColBit      buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColTinyInt  buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColShort    buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColLong     buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColBigInt   buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColFloat    buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColDouble   buf pStrLen) = free buf >> free pStrLen
+freeBindCol (BindColBinary   buf pStrLen) = free buf >> free pStrLen
 
 bindColToSqlValue :: BindCol -> IO SqlValue
-bindColToSqlValue (BindColChar buf) = do
-  val <- peek buf
-  return $ SqlChar $ castCUCharToChar val
 bindColToSqlValue (BindColUnknown buf pStrLen) = do
   strLen <- peek pStrLen
   bs <- B.packCStringLen (buf, fromIntegral strLen)
