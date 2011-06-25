@@ -400,10 +400,12 @@ getBindCols sstate cstmt = do
 
 data ColBuf
 
+-- These correspond to the C type identifiers found here:
+--     http://msdn.microsoft.com/en-us/library/ms714556(v=VS.85).aspx
+-- The Ptr values point to the appropriate C types
 data BindCol
   = BindColString  (Ptr CChar)
   | BindColWString (Ptr CWchar)
-  | BindColUnknown (Ptr CChar)
   | BindColBit     (Ptr CUChar)
   | BindColTinyInt (Ptr CChar)
   | BindColShort   (Ptr CShort)
@@ -412,6 +414,7 @@ data BindCol
   | BindColFloat   (Ptr CFloat)
   | BindColDouble  (Ptr CDouble)
   | BindColBinary  (Ptr CUChar)
+  | BindColUnknown (Ptr CChar)
   | BindColDate -- TODO
 -- struct tagDATE_STRUCT {
 --    SQLSMALLINT year;
@@ -553,40 +556,77 @@ mkBindColString cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CChar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf, pStrLen)
-
 mkBindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf, pStrLen)
-
-mkBindColBit cstmt col mColSize = undefined
-mkBindColTinyInt cstmt col mColSize = undefined
-mkBindColShort cstmt col mColSize = undefined
-mkBindColLong cstmt col mColSize = undefined
-mkBindColBigInt cstmt col mColSize = undefined
-mkBindColFloat cstmt col mColSize = undefined
-mkBindColDouble cstmt col mColSize = undefined
-mkBindColBinary cstmt col mColSize = undefined
+mkBindColBit cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CChar)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_BIT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColBit buf, pStrLen)
+mkBindColTinyInt cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CUChar)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColTinyInt buf, pStrLen)
+mkBindColShort cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CShort)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColShort buf, pStrLen)
+mkBindColLong cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CLong)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_SLONG}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColLong buf, pStrLen)
+mkBindColBigInt cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CInt)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColBigInt buf, pStrLen)
+mkBindColFloat cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CFloat)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColBit buf, pStrLen)
+mkBindColDouble cstmt col mColSize = do
+  let bufLen  = sizeOf (undefined :: CDouble)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColBit buf, pStrLen)
+mkBindColBinary cstmt col mColSize = do
+  let colSize = fromMaybe 128 mColSize
+  let bufLen  = sizeOf (undefined :: CUChar) * colSize
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_BINARY}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  return (BindColBit buf, pStrLen)
 mkBindColDate cstmt col mColSize = undefined
 mkBindColTime cstmt col mColSize = undefined
 mkBindColTimestamp cstmt col mColSize = undefined
 mkBindColInterval cstmt col mColSize = undefined
 mkBindColGUID cstmt col mColSize = undefined
-
 mkBindColUnknown cstmt col mColSize str = do
   let bufLen = 128
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col #{const SQL_CHAR} (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
   return (BindColUnknown buf, pStrLen)
 
 freeBindCol :: BindCol -> IO ()
-freeBindCol (BindColString   buf) = free buf
 freeBindCol (BindColString   buf) = free buf
 freeBindCol (BindColWString  buf) = free buf
 freeBindCol (BindColUnknown  buf) = free buf
@@ -599,19 +639,42 @@ freeBindCol (BindColFloat    buf) = free buf
 freeBindCol (BindColDouble   buf) = free buf
 freeBindCol (BindColBinary   buf) = free buf
 
--- Maybe it's best to separate BindCol and the Ptr StrLen so that
--- we can check for nulls straight away?
 bindColToSqlValue :: (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue (bindCol, pStrLen) = do
   strLen <- peek pStrLen
   case strLen of
-    #{const SQL_NO_DATA}   -> undefined
     #{const SQL_NULL_DATA} -> return SqlNull
+    #{const SQL_NO_TOTAL}  -> undefined -- this should fetch more data
     _                      -> bindColToSqlValue' bindCol strLen
 
+-- SQL_NTS is only valid as input, so we don't make use of it here:
+--     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
+bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
+bindColToSqlValue' (BindColString buf) strLen = do
+  bs <- B.packCStringLen (buf, fromIntegral strLen)
+  return $ SqlByteString bs
+bindColToSqlValue' (BindColWString buf) strLen = do
+  bs <- B.packCStringLen (unsafeCoerce buf, fromIntegral strLen)
+  return $ SqlByteString bs
 bindColToSqlValue' (BindColUnknown buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
   return $ SqlByteString bs
+bindColToSqlValue' (BindColBit     buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColTinyInt buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColShort   buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColLong    buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColBigInt  buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColFloat   buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColDouble  buf) strLen = do
+  undefined
+bindColToSqlValue' (BindColBinary  buf) strLen = do
+  undefined
 
 -- Each of these types must eventually correspond to one of the following
 -- SqlValue members:
