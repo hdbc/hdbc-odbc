@@ -325,49 +325,52 @@ ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt ->
                                checkError "sqlFetch" (StmtHandle cstmt) rc
                                ncols <- getNumResultCols cstmt
                                l $ "ncols: " ++ show ncols
-                               res <- mapM (getCol cstmt) [1..ncols]
+                               colInfo <- readMVar (colinfomv sstate)
+                               res <- mapM (getColData cstmt colInfo) [1..ncols]
                                return (stmt, Just res)
-    where getCol cstmt icol =
-             do let defaultLen = 128
-                colinfo <- readMVar (colinfomv sstate)
-                l $ "getCol: colinfo is " ++ show colinfo ++ ", icol " ++ show icol
-                let cBinding = case colType (snd (colinfo !! ((fromIntegral icol) - 1))) of
-                                 SqlBinaryT -> #{const SQL_C_BINARY}
-                                 SqlVarBinaryT -> #{const SQL_C_BINARY}
-                                 SqlLongVarBinaryT -> #{const SQL_C_BINARY}
-                                 _ -> #{const SQL_CHAR}
-                alloca $ \plen ->
-                 allocaBytes defaultLen $ \buf ->
-                   do res <- sqlGetData cstmt (fromIntegral icol) cBinding
-                                        buf (fromIntegral defaultLen) plen
-                      case res of
-                        #{const SQL_SUCCESS} ->
-                            do len <- peek plen
-                               case len of
-                                 #{const SQL_NULL_DATA} -> return SqlNull
-                                 #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
-                                 _ -> do bs <- B.packCStringLen (buf, fromIntegral len)
-                                         l $ "col is: " ++ show (BUTF8.toString bs)
-                                         return (SqlByteString bs)
-                        #{const SQL_SUCCESS_WITH_INFO} ->
-                            do len <- peek plen
-                               allocaBytes (fromIntegral len + 1) $ \buf2 ->
-                                 do sqlGetData cstmt (fromIntegral icol) cBinding
-                                               buf2 (fromIntegral len + 1) plen
-                                               >>= checkError "sqlGetData" (StmtHandle cstmt)
-                                    len2 <- peek plen
-                                    let firstbuf = case cBinding of
-                                                     #{const SQL_C_BINARY} -> defaultLen
-                                                     _ -> defaultLen - 1 -- strip off NUL
-                                    bs <- liftM2 (B.append) (B.packCStringLen (buf, firstbuf))
-                                          (B.packCStringLen (buf2, fromIntegral len2))
-                                    l $ "col is: " ++ (BUTF8.toString bs)
-                                    return (SqlByteString bs)
-                        _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
--- TODO: Check the return values of SQLFetch
--- TODO: Fix behaviour when strlen returns 0 (which indicates that SQLGetData
--- is needed)
+-- TODO: This code does not deal well with data that is extremely large,
+-- where multiple fetches are required.
+getColData cstmt colInfo icol = do
+  let defaultLen = 128
+  l $ "getColData: colInfo is " ++ show colInfo ++ ", icol " ++ show icol
+  let cBinding = case colType (snd (colInfo !! ((fromIntegral icol) - 1))) of
+                   SqlBinaryT -> #{const SQL_C_BINARY}
+                   SqlVarBinaryT -> #{const SQL_C_BINARY}
+                   SqlLongVarBinaryT -> #{const SQL_C_BINARY}
+                   _ -> #{const SQL_CHAR}
+  alloca $ \plen ->
+   allocaBytes defaultLen $ \buf ->
+     do res <- sqlGetData cstmt (fromIntegral icol) cBinding
+                          buf (fromIntegral defaultLen) plen
+        case res of
+          #{const SQL_SUCCESS} ->
+              do len <- peek plen
+                 case len of
+                   #{const SQL_NULL_DATA} -> return SqlNull
+                   #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
+                   _ -> do bs <- B.packCStringLen (buf, fromIntegral len)
+                           l $ "col is: " ++ show (BUTF8.toString bs)
+                           return (SqlByteString bs)
+          #{const SQL_SUCCESS_WITH_INFO} ->
+              do len <- peek plen
+                 allocaBytes (fromIntegral len + 1) $ \buf2 ->
+                   do sqlGetData cstmt (fromIntegral icol) cBinding
+                                 buf2 (fromIntegral len + 1) plen
+                                 >>= checkError "sqlGetData" (StmtHandle cstmt)
+                      len2 <- peek plen
+                      let firstbuf = case cBinding of
+                                       #{const SQL_C_BINARY} -> defaultLen
+                                       _ -> defaultLen - 1 -- strip off NUL
+                      bs <- liftM2 (B.append) (B.packCStringLen (buf, firstbuf))
+                            (B.packCStringLen (buf2, fromIntegral len2))
+                      l $ "col is: " ++ (BUTF8.toString bs)
+                      return (SqlByteString bs)
+          _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
+
+-- TODO: The SQL_SUCCESS_WITH_INFO currenty delegates to the old behaviour,
+-- better would be to use getColData on only the buffers which have been
+-- truncated (ie String and Binary types).
 ffetchrowBindCol :: SState -> IO (Maybe [SqlValue])
 ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
   case stmt of
@@ -375,6 +378,7 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
       l "ffetchrowBindCol"
       return (stmt, Nothing)
     Just cmstmt -> withStmt cmstmt $ \cstmt -> do
+      colInfo <- readMVar (colinfomv sstate)
       bindCols <- getBindCols sstate cstmt
       rc <- sqlFetch cstmt
       if rc == #{const SQL_NO_DATA}
@@ -385,7 +389,13 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
         else do
           l "ffetchrowBindcol: fetching data"
           checkError "sqlFetch" (StmtHandle cstmt) rc
-          sqlValues <- mapM bindColToSqlValue bindCols
+          sqlValues <- case rc of
+            #{const SQL_SUCCESS}           -> mapM (bindColToSqlValue) bindCols
+            #{const SQL_SUCCESS_WITH_INFO} -> do
+              ncols <- getNumResultCols cstmt
+              l $ "ncols: " ++ show ncols
+              colInfo <- readMVar (colinfomv sstate)
+              mapM (getColData cstmt colInfo) [1..ncols]
           return (stmt, Just sqlValues)
 
 getBindCols :: SState -> Ptr CStmt -> IO [(BindCol, Ptr #{type SQLLEN})]
@@ -725,17 +735,20 @@ freeBindCol (BindColDate     buf) = free buf
 freeBindCol (BindColTime     buf) = free buf
 freeBindCol (BindColTimestamp buf) = free buf
 
+-- | This assumes that SQL_ATTR_MAX_LENGTH is set to zero, otherwise, we
+-- cannot detect truncated columns. See "returning Data in Bound Columns":
+--     http://msdn.microsoft.com/en-us/library/ms712424(v=vs.85).aspx
+-- Also note that the strLen value of SQL_NTS denotes a null terminated string,
+-- but is only valid as input, so we don't make use of it here:
+--     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
 bindColToSqlValue :: (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue (bindCol, pStrLen) = do
   strLen <- peek pStrLen
   case strLen of
     #{const SQL_NULL_DATA} -> return SqlNull
-    #{const SQL_NO_TOTAL}  -> undefined -- this should fetch more data
+    #{const SQL_NO_TOTAL}  -> fail $ "Unexpected SQL_NO_TOTAL"
     _                      -> bindColToSqlValue' bindCol strLen
 
--- The strLen value of SQL_NTS denotes a null temrinated string, but is only
--- valid as input, so we don't make use of it here:
---     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
 bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' (BindColString buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
