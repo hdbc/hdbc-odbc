@@ -721,6 +721,9 @@ freeBindCol (BindColBigInt   buf) = free buf
 freeBindCol (BindColFloat    buf) = free buf
 freeBindCol (BindColDouble   buf) = free buf
 freeBindCol (BindColBinary   buf) = free buf
+freeBindCol (BindColDate     buf) = free buf
+freeBindCol (BindColTime     buf) = free buf
+freeBindCol (BindColTimestamp buf) = free buf
 
 bindColToSqlValue :: (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue (bindCol, pStrLen) = do
