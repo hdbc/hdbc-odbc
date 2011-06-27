@@ -556,63 +556,63 @@ mkBindColString cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CChar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf, pStrLen)
 mkBindColWString cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * colSize
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf, pStrLen)
 mkBindColBit cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CChar)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_BIT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColTinyInt cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CUChar)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 mkBindColShort cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CShort)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 mkBindColLong cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CLong)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_SLONG}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 mkBindColBigInt cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CInt)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 mkBindColFloat cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CFloat)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColDouble cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CDouble)
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CUChar) * colSize
   buf     <- malloc
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_BINARY}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColDate cstmt col mColSize = undefined
 mkBindColTime cstmt col mColSize = undefined
@@ -623,7 +623,7 @@ mkBindColUnknown cstmt col mColSize str = do
   let bufLen = 128
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (unsafeCoerce buf) (fromIntegral bufLen) pStrLen
+  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColUnknown buf, pStrLen)
 
 freeBindCol :: BindCol -> IO ()
@@ -654,7 +654,7 @@ bindColToSqlValue' (BindColString buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
   return $ SqlByteString bs
 bindColToSqlValue' (BindColWString buf) strLen = do
-  bs <- B.packCStringLen (unsafeCoerce buf, fromIntegral strLen)
+  bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
   return $ SqlByteString bs
 bindColToSqlValue' (BindColUnknown buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
