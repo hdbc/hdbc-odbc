@@ -415,28 +415,9 @@ data BindCol
   | BindColDouble  (Ptr CDouble)
   | BindColBinary  (Ptr CUChar)
   | BindColUnknown (Ptr CChar)
-  | BindColDate -- TODO
--- struct tagDATE_STRUCT {
---    SQLSMALLINT year;
---    SQLUSMALLINT month;
---    SQLUSMALLINT day;  
--- } DATE_STRUCT;[a]
-  | BindColTime -- TODO
--- struct tagTIME_STRUCT {
---    SQLUSMALLINT hour;
---    SQLUSMALLINT minute;
---    SQLUSMALLINT second;
--- } TIME_STRUCT;[a]
-  | BindColTimestamp -- TODO
--- struct tagTIMESTAMP_STRUCT {
---    SQLSMALLINT year;
---    SQLUSMALLINT month;
---    SQLUSMALLINT day;
---    SQLUSMALLINT hour;
---    SQLUSMALLINT minute;
---    SQLUSMALLINT second;
---    SQLUINTEGER fraction;[b] 
--- } TIMESTAMP_STRUCT;[a]
+  | BindColDate    (Ptr StructDate)
+  | BindColTime    (Ptr StructTime)
+  | BindColTimestamp (Ptr StructTimeStamp)
   | BindColInterval -- TODO
 -- typedef struct tagSQL_INTERVAL_STRUCT
 -- {
@@ -478,13 +459,96 @@ data BindCol
 --    SQLUINTEGER second;
 --    SQLUINTEGER fraction;
 -- } SQL_DAY_SECOND_STRUCT;
-  | BindColGUID -- TODO
--- struct tagSQLGUID {
---    DWORD Data1;
---    WORD Data2;
---    WORD Data3;
---    BYTE Data4[8];
--- } SQLGUID;[k]
+  | BindColGUID (Ptr StructGUID)
+
+
+-- | StructDate is used to marshal the DATE_STRUCT
+-- This struct, and the ones which follow, are described here:
+--     http://msdn.microsoft.com/en-us/library/ms714556(v=VS.85).aspx
+data StructDate = StructDate
+  #{type SQLSMALLINT}   -- ^ year
+  #{type SQLUSMALLINT}  -- ^ month
+  #{type SQLUSMALLINT}  -- ^ day
+
+instance Storable StructDate where
+  sizeOf _    = #{size DATE_STRUCT}
+  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  poke p (StructDate year month day) = do
+    #{poke DATE_STRUCT, year}  p year
+    #{poke DATE_STRUCT, month} p month
+    #{poke DATE_STRUCT, day}   p day
+  peek p = return StructDate
+    `ap` (#{peek DATE_STRUCT, year}  p)
+    `ap` (#{peek DATE_STRUCT, month} p)
+    `ap` (#{peek DATE_STRUCT, day}   p)
+
+
+-- | StructTime is used to marshals the TIME_STRUCT:
+data StructTime = StructTime
+  #{type SQLUSMALLINT} -- ^ hour
+  #{type SQLUSMALLINT} -- ^ minute
+  #{type SQLUSMALLINT} -- ^ second
+
+instance Storable StructTime where
+  sizeOf _    = #{size TIME_STRUCT}
+  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  poke p (StructTime hour minute second) = do
+    #{poke TIME_STRUCT, hour}   p hour
+    #{poke TIME_STRUCT, minute} p minute
+    #{poke TIME_STRUCT, second} p second
+  peek p = return StructTime
+    `ap` (#{peek TIME_STRUCT, hour}  p)
+    `ap` (#{peek TIME_STRUCT, minute} p)
+    `ap` (#{peek TIME_STRUCT, second}   p)
+
+-- | StructTimeStamp is used to marshal the TIMESTAMP_STRUCT;
+data StructTimeStamp = StructTimeStamp
+  #{type SQLSMALLINT}   -- ^ year
+  #{type SQLUSMALLINT}  -- ^ month
+  #{type SQLUSMALLINT}  -- ^ day
+  #{type SQLUSMALLINT}  -- ^ hour
+  #{type SQLUSMALLINT}  -- ^ minute
+  #{type SQLUSMALLINT}  -- ^ second
+  #{type SQLUINTEGER}   -- ^ fraction
+
+instance Storable StructTimeStamp where
+  sizeOf _    = #{size TIMESTAMP_STRUCT}
+  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  poke p (StructTimeStamp year month day hour minute second fraction) = do
+    #{poke TIMESTAMP_STRUCT, year}      p year
+    #{poke TIMESTAMP_STRUCT, month}     p month
+    #{poke TIMESTAMP_STRUCT, day}       p day
+    #{poke TIMESTAMP_STRUCT, hour}      p hour
+    #{poke TIMESTAMP_STRUCT, minute}    p minute
+    #{poke TIMESTAMP_STRUCT, second}    p second
+    #{poke TIMESTAMP_STRUCT, fraction}  p fraction
+  peek p = return StructTimeStamp
+    `ap` (#{peek TIMESTAMP_STRUCT, year}     p)
+    `ap` (#{peek TIMESTAMP_STRUCT, month}    p)
+    `ap` (#{peek TIMESTAMP_STRUCT, day}      p)
+    `ap` (#{peek TIMESTAMP_STRUCT, hour}     p)
+    `ap` (#{peek TIMESTAMP_STRUCT, minute}   p)
+    `ap` (#{peek TIMESTAMP_STRUCT, second}   p)
+    `ap` (#{peek TIMESTAMP_STRUCT, fraction} p)
+
+-- | StructGUID
+-- FIXME: This is almost certainly incorrect, since no array fetching is done
+-- for Data4.
+data StructGUID = StructGUID
+  #{type DWORD}     -- ^ Data1
+  #{type WORD}      -- ^ Data2
+  #{type WORD}      -- ^ Data3
+  (Ptr #{type BYTE})  -- ^ Data4[8]  -- TODO: Check that this is how we do arrays
+
+instance Storable StructGUID where
+  sizeOf _ = #{size SQLGUID}
+  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  poke p (StructGUID data1 data2 data3 data4) = do
+    #{poke SQLGUID, Data1} p data1
+    #{poke SQLGUID, Data2} p data2
+    #{poke SQLGUID, Data3} p data3
+    #{poke SQLGUID, Data4} p data4
+
 
 -- | This function binds the data in a column to a value of type
 -- BindCol, using the default conversion scheme described here:
