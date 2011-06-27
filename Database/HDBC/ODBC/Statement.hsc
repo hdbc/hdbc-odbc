@@ -532,13 +532,12 @@ instance Storable StructTimestamp where
     `ap` (#{peek TIMESTAMP_STRUCT, fraction} p)
 
 -- | StructGUID
--- FIXME: This is almost certainly incorrect, since no array fetching is done
--- for Data4.
+-- TODO: Check the peek/poke of the struct member that's an array
 data StructGUID = StructGUID
   #{type DWORD}     -- ^ Data1
   #{type WORD}      -- ^ Data2
   #{type WORD}      -- ^ Data3
-  (Ptr #{type BYTE})  -- ^ Data4[8]  -- TODO: Check that this is how we do arrays
+  [#{type BYTE}]    -- ^ Data4[8]
 
 instance Storable StructGUID where
   sizeOf _ = #{size SQLGUID}
@@ -547,7 +546,12 @@ instance Storable StructGUID where
     #{poke SQLGUID, Data1} p data1
     #{poke SQLGUID, Data2} p data2
     #{poke SQLGUID, Data3} p data3
-    #{poke SQLGUID, Data4} p data4
+    pokeArray (p `plusPtr` #{offset SQLGUID, Data4}) data4
+  peek p = return StructGUID
+    `ap` (#{peek SQLGUID, Data1} p)
+    `ap` (#{peek SQLGUID, Data2} p)
+    `ap` (#{peek SQLGUID, Data3} p)
+    `ap` (peekArray 8 (p `plusPtr` #{offset SQLGUID, Data4}))
 
 
 -- | This function binds the data in a column to a value of type
