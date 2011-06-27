@@ -417,7 +417,7 @@ data BindCol
   | BindColUnknown (Ptr CChar)
   | BindColDate    (Ptr StructDate)
   | BindColTime    (Ptr StructTime)
-  | BindColTimestamp (Ptr StructTimeStamp)
+  | BindColTimestamp (Ptr StructTimestamp)
   | BindColInterval -- TODO
 -- typedef struct tagSQL_INTERVAL_STRUCT
 -- {
@@ -501,8 +501,8 @@ instance Storable StructTime where
     `ap` (#{peek TIME_STRUCT, minute} p)
     `ap` (#{peek TIME_STRUCT, second}   p)
 
--- | StructTimeStamp is used to marshal the TIMESTAMP_STRUCT;
-data StructTimeStamp = StructTimeStamp
+-- | StructTimestamp is used to marshal the TIMESTAMP_STRUCT;
+data StructTimestamp = StructTimestamp
   #{type SQLSMALLINT}   -- ^ year
   #{type SQLUSMALLINT}  -- ^ month
   #{type SQLUSMALLINT}  -- ^ day
@@ -511,10 +511,10 @@ data StructTimeStamp = StructTimeStamp
   #{type SQLUSMALLINT}  -- ^ second
   #{type SQLUINTEGER}   -- ^ fraction
 
-instance Storable StructTimeStamp where
+instance Storable StructTimestamp where
   sizeOf _    = #{size TIMESTAMP_STRUCT}
   alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
-  poke p (StructTimeStamp year month day hour minute second fraction) = do
+  poke p (StructTimestamp year month day hour minute second fraction) = do
     #{poke TIMESTAMP_STRUCT, year}      p year
     #{poke TIMESTAMP_STRUCT, month}     p month
     #{poke TIMESTAMP_STRUCT, day}       p day
@@ -522,7 +522,7 @@ instance Storable StructTimeStamp where
     #{poke TIMESTAMP_STRUCT, minute}    p minute
     #{poke TIMESTAMP_STRUCT, second}    p second
     #{poke TIMESTAMP_STRUCT, fraction}  p fraction
-  peek p = return StructTimeStamp
+  peek p = return StructTimestamp
     `ap` (#{peek TIMESTAMP_STRUCT, year}     p)
     `ap` (#{peek TIMESTAMP_STRUCT, month}    p)
     `ap` (#{peek TIMESTAMP_STRUCT, day}      p)
@@ -678,11 +678,26 @@ mkBindColBinary cstmt col mColSize = do
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
-mkBindColDate cstmt col mColSize = undefined
-mkBindColTime cstmt col mColSize = undefined
-mkBindColTimestamp cstmt col mColSize = undefined
-mkBindColInterval cstmt col mColSize = undefined
-mkBindColGUID cstmt col mColSize = undefined
+mkBindColDate cstmt col mColSize = do
+  let bufLen = sizeOf (undefined :: StructDate)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  return (BindColDate buf, pStrLen)
+mkBindColTime cstmt col mColSize = do
+  let bufLen = sizeOf (undefined :: StructTime)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  return (BindColTime buf, pStrLen)
+mkBindColTimestamp cstmt col mColSize = do
+  let bufLen = sizeOf (undefined :: StructTimestamp)
+  buf     <- malloc
+  pStrLen <- malloc
+  sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  return (BindColTimestamp buf, pStrLen)
+mkBindColInterval cstmt col mColsize interval = mkBindColUnknown cstmt col mColsize "Interval"
+mkBindColGUID cstmt col mColsize = mkBindColUnknown cstmt col mColsize "GUID"
 mkBindColUnknown cstmt col mColSize str = do
   let bufLen = 128
   buf     <- mallocBytes bufLen
