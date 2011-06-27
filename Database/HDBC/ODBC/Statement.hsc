@@ -728,13 +728,17 @@ fexecutemany sstate arglist =
 
 -- Finish and change state
 public_ffinish :: SState -> IO ()
-public_ffinish sstate = 
-    do l "public_ffinish"
-       modifyMVar_ (stomv sstate) worker
-    where worker Nothing = return Nothing
-          worker (Just sth) = ffinish sth >> return Nothing
+public_ffinish sstate = do
+  l "public_ffinish"
+  modifyMVar_ (stomv sstate) freeMStmt
+  modifyMVar_ (bindColsMV sstate) freeBindCols
+ where
+  freeMStmt Nothing    = return Nothing
+  freeMStmt (Just sth) = ffinish sth >> return Nothing
+  freeBindCols bindCols = do
+    mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
+    return []
 
--- TODO: Free the column memory
 ffinish :: Stmt -> IO ()
 ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
 
