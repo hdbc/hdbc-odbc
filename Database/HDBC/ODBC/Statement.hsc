@@ -647,7 +647,8 @@ bindColToSqlValue (bindCol, pStrLen) = do
     #{const SQL_NO_TOTAL}  -> undefined -- this should fetch more data
     _                      -> bindColToSqlValue' bindCol strLen
 
--- SQL_NTS is only valid as input, so we don't make use of it here:
+-- The strLen value of SQL_NTS denotes a null temrinated string, but is only
+-- valid as input, so we don't make use of it here:
 --     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
 bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' (BindColString buf) strLen = do
@@ -660,47 +661,29 @@ bindColToSqlValue' (BindColUnknown buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
   return $ SqlByteString bs
 bindColToSqlValue' (BindColBit     buf) strLen = do
-  undefined
+  bit <- peek buf
+  return $ SqlChar (castCUCharToChar bit)
 bindColToSqlValue' (BindColTinyInt buf) strLen = do
-  undefined
+  tinyInt <- peek buf
+  return $ SqlChar (castCCharToChar tinyInt)
 bindColToSqlValue' (BindColShort   buf) strLen = do
-  undefined
+  short <- peek buf
+  return $ SqlInt32 (fromIntegral short)
 bindColToSqlValue' (BindColLong    buf) strLen = do
-  undefined
+  long <- peek buf
+  return $ SqlInt32 (fromIntegral long)
 bindColToSqlValue' (BindColBigInt  buf) strLen = do
-  undefined
+  bigInt <- peek buf
+  return $ SqlInt64 (fromIntegral bigInt)
 bindColToSqlValue' (BindColFloat   buf) strLen = do
-  undefined
+  float <- peek buf
+  return $ SqlDouble (realToFrac float)
 bindColToSqlValue' (BindColDouble  buf) strLen = do
-  undefined
+  double <- peek buf
+  return $ SqlDouble (realToFrac double)
 bindColToSqlValue' (BindColBinary  buf) strLen = do
-  undefined
-
--- Each of these types must eventually correspond to one of the following
--- SqlValue members:
--- SqlChar Char
--- SqlString String	
--- SqlByteString ByteString	
--- SqlWord32 Word32	
--- SqlWord64 Word64	
--- SqlInt32 Int32	
--- SqlInt64 Int64	
--- SqlInteger Integer	
--- SqlBool Bool	
--- SqlDouble Double	
--- SqlRational Rational	
--- SqlLocalDate Day	Local YYYY-MM-DD (no timezone)
--- SqlLocalTimeOfDay TimeOfDay	Local HH:MM:SS (no timezone)
--- SqlZonedLocalTimeOfDay TimeOfDay TimeZone	Local HH:MM:SS -HHMM. Converts to and from (TimeOfDay, TimeZone).
--- SqlLocalTime LocalTime	Local YYYY-MM-DD HH:MM:SS (no timezone)
--- SqlZonedTime ZonedTime	Local YYYY-MM-DD HH:MM:SS -HHMM. Considered equal if both convert to the same UTC time.
--- SqlUTCTime UTCTime	UTC YYYY-MM-DD HH:MM:SS
--- SqlDiffTime NominalDiffTime	Calendar diff between seconds. Rendered as Integer when converted to String, but greater precision may be preserved for other types or to underlying database.
--- SqlPOSIXTime POSIXTime	Time as seconds since midnight Jan 1 1970 UTC. Integer rendering as for SqlDiffTime.
--- SqlEpochTime Integer	DEPRECATED Representation of ClockTime or CalendarTime. Use SqlPOSIXTime instead.
--- SqlTimeDiff Integer	DEPRECATED Representation of TimeDiff. Use SqlDiffTime instead.
--- SqlNull
-
+  bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
+  return $ SqlByteString bs
 
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
