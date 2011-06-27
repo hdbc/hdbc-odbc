@@ -308,7 +308,7 @@ cstrUtf8BString bs = do
 
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow = ffetchrowGetData
+ffetchrow = ffetchrowBindCol
 
 ffetchrowGetData :: SState -> IO (Maybe [SqlValue])
 ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt -> 
