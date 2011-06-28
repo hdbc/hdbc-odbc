@@ -34,9 +34,16 @@ import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
 import Unsafe.Coerce (unsafeCoerce)
 
+import System.IO (hPutStrLn, stderr)
+import Debug.Trace
+
 l :: String -> IO ()
 l _ = return ()
---l m = hPutStrLn stderr ("\n" ++ m)
+-- l m = hPutStrLn stderr ("\n" ++ m)
+
+l2 :: String -> IO ()
+l2 _ = return ()
+-- l2 m = hPutStrLn stderr (m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -96,7 +103,7 @@ newSState :: Conn -> String -> IO SState
 newSState indbo query =
     do newstomv     <- newMVar Nothing
        newcolinfomv <- newMVar []
-       newBindCols  <- newMVar []
+       newBindCols  <- newEmptyMVar
        return SState
          { stomv      = newstomv
          , dbo        = indbo
@@ -308,10 +315,13 @@ cstrUtf8BString bs = do
 
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow = ffetchrowBindCol
+ffetchrow sstate = do 
+  l2 "ffetchrow"
+  ffetchrowBindCol sstate
 
 ffetchrowGetData :: SState -> IO (Maybe [SqlValue])
-ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt -> 
+ffetchrowGetData sstate = modifyMVar (stomv sstate) $ \stmt -> do
+             l2 "ffetchrowGetData"
              case stmt of
                Nothing -> l "ffr nos" >> return (stmt, Nothing)
                Just cmstmt -> withStmt cmstmt $ \cstmt ->
@@ -372,14 +382,16 @@ getColData cstmt colInfo icol = do
 -- better would be to use getColData on only the buffers which have been
 -- truncated (ie String and Binary types).
 ffetchrowBindCol :: SState -> IO (Maybe [SqlValue])
-ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
+ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt -> do
+  l2 $ "ffetchrowBindCol"
   case stmt of
     Nothing -> do
-      l "ffetchrowBindCol"
+      l "ffetchrowBindCol: no statement"
       return (stmt, Nothing)
     Just cmstmt -> withStmt cmstmt $ \cstmt -> do
       colInfo <- readMVar (colinfomv sstate)
       bindCols <- getBindCols sstate cstmt
+      l "ffetchrowBindCol: fetching"
       rc <- sqlFetch cstmt
       if rc == #{const SQL_NO_DATA}
         then do
@@ -392,6 +404,7 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
           sqlValues <- case rc of
             #{const SQL_SUCCESS}           -> mapM (bindColToSqlValue) bindCols
             #{const SQL_SUCCESS_WITH_INFO} -> do
+              l "ffetchrowBindCol: SQL_SUCCESS_WITH_INFO"
               ncols <- getNumResultCols cstmt
               l $ "ncols: " ++ show ncols
               colInfo <- readMVar (colinfomv sstate)
@@ -400,13 +413,14 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt ->
 
 getBindCols :: SState -> Ptr CStmt -> IO [(BindCol, Ptr #{type SQLLEN})]
 getBindCols sstate cstmt = do
-  bindCols <- readMVar (bindColsMV sstate)
-  case bindCols of
-    [] -> do cols <- getNumResultCols cstmt
-             pBindCols <- mapM (mkBindCol sstate cstmt) [1 .. cols]
-             putMVar (bindColsMV sstate) pBindCols
-             return pBindCols
-    _  -> return bindCols
+  l "getBindCols"
+  bindColsEmpty <- isEmptyMVar (bindColsMV sstate)
+  if bindColsEmpty
+    then do cols <- getNumResultCols cstmt
+            pBindCols <- mapM (mkBindCol sstate cstmt) [1 .. cols]
+            putMVar (bindColsMV sstate) pBindCols
+            return pBindCols
+    else readMVar (bindColsMV sstate)
 
 data ColBuf
 
@@ -591,6 +605,7 @@ instance Storable StructGUID where
 -- might be had by using Row-Wise binding.
 mkBindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO (BindCol, Ptr #{type SQLLEN})
 mkBindCol sstate cstmt col = do
+  l "mkBindCol"
   colInfo <- readMVar (colinfomv sstate)
   let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
   case colType colDesc of
@@ -678,20 +693,20 @@ mkBindColFloat cstmt col mColSize = do
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
-  return (BindColBit buf, pStrLen)
+  return (BindColFloat buf, pStrLen)
 mkBindColDouble cstmt col mColSize = do
   let bufLen  = sizeOf (undefined :: CDouble)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
-  return (BindColBit buf, pStrLen)
+  return (BindColDouble buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
   let colSize = fromMaybe 128 mColSize
   let bufLen  = sizeOf (undefined :: CUChar) * colSize
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
-  return (BindColBit buf, pStrLen)
+  return (BindColBinary buf, pStrLen)
 mkBindColDate cstmt col mColSize = do
   let bufLen = sizeOf (undefined :: StructDate)
   buf     <- malloc
@@ -743,6 +758,7 @@ freeBindCol (BindColTimestamp buf) = free buf
 --     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
 bindColToSqlValue :: (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue (bindCol, pStrLen) = do
+  l2 "bindColToSqlValue"
   strLen <- peek pStrLen
   case strLen of
     #{const SQL_NULL_DATA} -> return SqlNull
@@ -752,36 +768,47 @@ bindColToSqlValue (bindCol, pStrLen) = do
 bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' (BindColString buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
+  l2 $ "bindColToSqlValue BindColString " ++ show bs
   return $ SqlByteString bs
 bindColToSqlValue' (BindColWString buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
+  l2 $ "bindColToSqlValue BindColWString " ++ show bs
   return $ SqlByteString bs
 bindColToSqlValue' (BindColUnknown buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
+  l2 $ "bindColToSqlValue BindColUnknown " ++ show bs
   return $ SqlByteString bs
 bindColToSqlValue' (BindColBit     buf) strLen = do
   bit <- peek buf
+  l2 $ "bindColToSqlValue BindColBit " ++ show bit
   return $ SqlChar (castCUCharToChar bit)
 bindColToSqlValue' (BindColTinyInt buf) strLen = do
   tinyInt <- peek buf
+  l2 $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
   return $ SqlChar (castCCharToChar tinyInt)
 bindColToSqlValue' (BindColShort   buf) strLen = do
   short <- peek buf
+  l2 $ "bindColToSqlValue BindColShort" ++ show short
   return $ SqlInt32 (fromIntegral short)
 bindColToSqlValue' (BindColLong    buf) strLen = do
   long <- peek buf
+  l2 $ "bindColToSqlValue BindColLong " ++ show long
   return $ SqlInt32 (fromIntegral long)
 bindColToSqlValue' (BindColBigInt  buf) strLen = do
   bigInt <- peek buf
+  l2 $ "bindColToSqlValue BindColBigInt " ++ show bigInt
   return $ SqlInt64 (fromIntegral bigInt)
 bindColToSqlValue' (BindColFloat   buf) strLen = do
   float <- peek buf
+  l2 $ "bindColToSqlValue BindColFloat " ++ show float
   return $ SqlDouble (realToFrac float)
 bindColToSqlValue' (BindColDouble  buf) strLen = do
   double <- peek buf
+  l2 $ "bindColToSqlValue BindColDouble " ++ show double
   return $ SqlDouble (realToFrac double)
 bindColToSqlValue' (BindColBinary  buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
+  l2 $ "bindColToSqlValue BindColBinary " ++ show bs
   return $ SqlByteString bs
 
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
@@ -813,7 +840,12 @@ public_ffinish :: SState -> IO ()
 public_ffinish sstate = do
   l "public_ffinish"
   modifyMVar_ (stomv sstate) freeMStmt
-  modifyMVar_ (bindColsMV sstate) freeBindCols
+  bindColsEmpty <- isEmptyMVar (bindColsMV sstate)
+  if bindColsEmpty
+    then do l "public_ffinish: bindColsEmpty" 
+            return ()
+    else do l "public_ffinish: not bindColsEmpty" 
+            modifyMVar_ (bindColsMV sstate) freeBindCols
  where
   freeMStmt Nothing    = return Nothing
   freeMStmt (Just sth) = ffinish sth >> return Nothing
