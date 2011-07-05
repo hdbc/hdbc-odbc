@@ -27,6 +27,8 @@ import Foreign.Marshal
 import Foreign.Storable
 import Control.Monad
 import Data.Word
+import Data.Time.Calendar (fromGregorian)
+import Data.Time.LocalTime (TimeOfDay(TimeOfDay), LocalTime(LocalTime))
 import Data.Int
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.ByteString as B
@@ -386,7 +388,7 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt -> do
   l2 $ "ffetchrowBindCol"
   case stmt of
     Nothing -> do
-      l "ffetchrowBindCol: no statement"
+      l2 "ffetchrowBindCol: no statement"
       return (stmt, Nothing)
     Just cmstmt -> withStmt cmstmt $ \cstmt -> do
       colInfo <- readMVar (colinfomv sstate)
@@ -483,7 +485,7 @@ data BindCol
 --    SQLUINTEGER second;
 --    SQLUINTEGER fraction;
 -- } SQL_DAY_SECOND_STRUCT;
-  | BindColGUID (Ptr StructGUID)
+-- | BindColGUID (Ptr StructGUID)
 
 
 -- | StructDate is used to marshal the DATE_STRUCT
@@ -493,6 +495,7 @@ data StructDate = StructDate
   #{type SQLSMALLINT}   -- ^ year
   #{type SQLUSMALLINT}  -- ^ month
   #{type SQLUSMALLINT}  -- ^ day
+ deriving Show
 
 instance Storable StructDate where
   sizeOf _    = #{size DATE_STRUCT}
@@ -632,7 +635,8 @@ mkBindCol sstate cstmt col = do
     SqlTimeT          -> mkBindColTime      cstmt col' (colSize colDesc)
     SqlTimestampT     -> mkBindColTimestamp cstmt col' (colSize colDesc)
     SqlIntervalT i    -> mkBindColInterval  cstmt col' (colSize colDesc) i
-    SqlGUIDT          -> mkBindColGUID      cstmt col' (colSize colDesc)
+--    SqlGUIDT          -> mkBindColGUID      cstmt col' (colSize colDesc)
+    SqlGUIDT          -> mkBindColBinary    cstmt col' (colSize colDesc)
     SqlUnknownT s     -> mkBindColUnknown   cstmt col' (colSize colDesc) s
     _                 -> mkBindColUnknown   cstmt col' (colSize colDesc) "Unknown"
 -- The following are not supported by ODBC:
@@ -645,89 +649,103 @@ mkBindCol sstate cstmt col = do
 
 -- The functions that follow do the marshalling from C into a Haskell type
 mkBindColString cstmt col mColSize = do
+  l "mkBindCol: BindColString"
   let colSize = fromMaybe 128 mColSize
-  let bufLen  = sizeOf (undefined :: CChar) * colSize
+  let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf, pStrLen)
 mkBindColWString cstmt col mColSize = do
+  l "mkBindCol: BindColWString"
   let colSize = fromMaybe 128 mColSize
-  let bufLen  = sizeOf (undefined :: CWchar) * colSize
+  let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf, pStrLen)
 mkBindColBit cstmt col mColSize = do
+  l "mkBindCol: BindColBit"
   let bufLen  = sizeOf (undefined :: CChar)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColTinyInt cstmt col mColSize = do
+  l "mkBindCol: BindColTinyInt"
   let bufLen  = sizeOf (undefined :: CUChar)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 mkBindColShort cstmt col mColSize = do
+  l "mkBindCol: BindColShort"
   let bufLen  = sizeOf (undefined :: CShort)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 mkBindColLong cstmt col mColSize = do
+  l "mkBindCol: BindColSize"
   let bufLen  = sizeOf (undefined :: CLong)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 mkBindColBigInt cstmt col mColSize = do
+  l "mkBindCol: BindColBigInt"
   let bufLen  = sizeOf (undefined :: CInt)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 mkBindColFloat cstmt col mColSize = do
+  l "mkBindCol: BindColFloat"
   let bufLen  = sizeOf (undefined :: CFloat)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColFloat buf, pStrLen)
 mkBindColDouble cstmt col mColSize = do
+  l "mkBindCol: BindColDouble"
   let bufLen  = sizeOf (undefined :: CDouble)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDouble buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
+  l "mkBindCol: BindColBinary"
   let colSize = fromMaybe 128 mColSize
-  let bufLen  = sizeOf (undefined :: CUChar) * colSize
+  let bufLen  = sizeOf (undefined :: CUChar) * (colSize + 1)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBinary buf, pStrLen)
 mkBindColDate cstmt col mColSize = do
+  l "mkBindCol: BindColDate"
   let bufLen = sizeOf (undefined :: StructDate)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDate buf, pStrLen)
 mkBindColTime cstmt col mColSize = do
+  l "mkBindCol: BindColTime"
   let bufLen = sizeOf (undefined :: StructTime)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTime buf, pStrLen)
 mkBindColTimestamp cstmt col mColSize = do
+  l "mkBindCol: BindColTimestamp"
   let bufLen = sizeOf (undefined :: StructTimestamp)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTimestamp buf, pStrLen)
 mkBindColInterval cstmt col mColsize interval = mkBindColUnknown cstmt col mColsize "Interval"
-mkBindColGUID cstmt col mColsize = mkBindColUnknown cstmt col mColsize "GUID"
+-- mkBindColGUID cstmt col mColsize = mkBindColUnknown cstmt col mColsize "GUID"
 mkBindColUnknown cstmt col mColSize str = do
+  l "mkBindCol: BindColUnknown"
   let bufLen = 128
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
@@ -765,10 +783,11 @@ bindColToSqlValue (bindCol, pStrLen) = do
     #{const SQL_NO_TOTAL}  -> fail $ "Unexpected SQL_NO_TOTAL"
     _                      -> bindColToSqlValue' bindCol strLen
 
+-- TODO: Cover all the BindCol cases
 bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' (BindColString buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
-  l2 $ "bindColToSqlValue BindColString " ++ show bs
+  l2 $ "bindColToSqlValue BindColString " ++ show bs ++ " " ++ show strLen
   return $ SqlByteString bs
 bindColToSqlValue' (BindColWString buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
@@ -810,6 +829,26 @@ bindColToSqlValue' (BindColBinary  buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
   l2 $ "bindColToSqlValue BindColBinary " ++ show bs
   return $ SqlByteString bs
+bindColToSqlValue' (BindColDate buf) strLen = do
+  StructDate year month day <- peek buf
+  l2 $ "bindColToSqlValue BindColDate"
+  return $ SqlLocalDate $ fromGregorian
+    (fromIntegral year) (fromIntegral month) (fromIntegral day)
+bindColToSqlValue' (BindColTime buf) strLen = do
+  StructTime hour minute second <- peek buf
+  l2 $ "bindColToSqlValue BindColTime"
+  return $ SqlLocalTimeOfDay $ TimeOfDay
+    (fromIntegral hour) (fromIntegral minute) (fromIntegral second)
+-- TODO: We ignore the fractions of a second.
+-- The alternative is to return this as binary data instead.
+bindColToSqlValue' (BindColTimestamp buf) strLen = do
+  StructTimestamp year month day hour minute second fraction <- peek buf
+  l2 $ "bindColToSqlValue BindColTimestamp"
+  return $ SqlLocalTime $ LocalTime
+    (fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day))
+    (TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second))
+
+
 
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =

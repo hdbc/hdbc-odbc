@@ -40,6 +40,7 @@ Library
   Build-Depends: base >= 4.3.1.0 && < 5
                , mtl
                , HDBC>=2.1.0
+               , time>=1.2.0.3
                , utf8-string
                , bytestring
   GHC-Options: -O2
