@@ -251,7 +251,6 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
    control passes out of this function. -}
 
     do l $ "Binding col " ++ show icol ++ ": " ++ show arg
-       --TODO: seems like we ought to know the param type from inspecting the SqlValue
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits pnullable
        l $ "rc1 is " ++ show (isOK rc1)
        when (not (isOK rc1)) $ -- Some drivers don't support that call
@@ -436,7 +435,7 @@ data BindCol
   | BindColTinyInt (Ptr CChar)
   | BindColShort   (Ptr CShort)
   | BindColLong    (Ptr CLong)
-  | BindColBigInt  (Ptr CInt)    -- TODO: _int64
+  | BindColBigInt  (Ptr #{type SQLBIGINT})
   | BindColFloat   (Ptr CFloat)
   | BindColDouble  (Ptr CDouble)
   | BindColBinary  (Ptr CUChar)
@@ -444,47 +443,52 @@ data BindCol
   | BindColDate    (Ptr StructDate)
   | BindColTime    (Ptr StructTime)
   | BindColTimestamp (Ptr StructTimestamp)
-  | BindColInterval -- TODO
--- typedef struct tagSQL_INTERVAL_STRUCT
--- {
---    SQLINTERVAL interval_type; 
---    SQLSMALLINT interval_sign;
---    union {
---          SQL_YEAR_MONTH_STRUCT   year_month;
---          SQL_DAY_SECOND_STRUCT   day_second;
---          } intval;
--- } SQL_INTERVAL_STRUCT;
--- typedef enum 
--- {
---    SQL_IS_YEAR = 1,
---    SQL_IS_MONTH = 2,
---    SQL_IS_DAY = 3,
---    SQL_IS_HOUR = 4,
---    SQL_IS_MINUTE = 5,
---    SQL_IS_SECOND = 6,
---    SQL_IS_YEAR_TO_MONTH = 7,
---    SQL_IS_DAY_TO_HOUR = 8,
---    SQL_IS_DAY_TO_MINUTE = 9,
---    SQL_IS_DAY_TO_SECOND = 10,
---    SQL_IS_HOUR_TO_MINUTE = 11,
---    SQL_IS_HOUR_TO_SECOND = 12,
---    SQL_IS_MINUTE_TO_SECOND = 13
--- } SQLINTERVAL;
--- 
--- typedef struct tagSQL_YEAR_MONTH
--- {
---    SQLUINTEGER year;
---    SQLUINTEGER month; 
--- } SQL_YEAR_MONTH_STRUCT;
--- 
--- typedef struct tagSQL_DAY_SECOND
--- {
---    SQLUINTEGER day;
---    SQLUINTEGER hour;
---    SQLUINTEGER minute;
---    SQLUINTEGER second;
---    SQLUINTEGER fraction;
--- } SQL_DAY_SECOND_STRUCT;
+
+
+-- Intervals and GUIDs have not been implemented, since there is no
+-- equivalent SqlValue for these.
+--
+--  | BindColInterval -- TODO
+--      typedef struct tagSQL_INTERVAL_STRUCT
+--      {
+--         SQLINTERVAL interval_type; 
+--         SQLSMALLINT interval_sign;
+--         union {
+--               SQL_YEAR_MONTH_STRUCT   year_month;
+--               SQL_DAY_SECOND_STRUCT   day_second;
+--               } intval;
+--      } SQL_INTERVAL_STRUCT;
+--      typedef enum 
+--      {
+--         SQL_IS_YEAR = 1,
+--         SQL_IS_MONTH = 2,
+--         SQL_IS_DAY = 3,
+--         SQL_IS_HOUR = 4,
+--         SQL_IS_MINUTE = 5,
+--         SQL_IS_SECOND = 6,
+--         SQL_IS_YEAR_TO_MONTH = 7,
+--         SQL_IS_DAY_TO_HOUR = 8,
+--         SQL_IS_DAY_TO_MINUTE = 9,
+--         SQL_IS_DAY_TO_SECOND = 10,
+--         SQL_IS_HOUR_TO_MINUTE = 11,
+--         SQL_IS_HOUR_TO_SECOND = 12,
+--         SQL_IS_MINUTE_TO_SECOND = 13
+--      } SQLINTERVAL;
+--      
+--      typedef struct tagSQL_YEAR_MONTH
+--      {
+--         SQLUINTEGER year;
+--         SQLUINTEGER month; 
+--      } SQL_YEAR_MONTH_STRUCT;
+--      
+--      typedef struct tagSQL_DAY_SECOND
+--      {
+--         SQLUINTEGER day;
+--         SQLUINTEGER hour;
+--         SQLUINTEGER minute;
+--         SQLUINTEGER second;
+--         SQLUINTEGER fraction;
+--      } SQL_DAY_SECOND_STRUCT;
 -- | BindColGUID (Ptr StructGUID)
 
 
@@ -499,7 +503,7 @@ data StructDate = StructDate
 
 instance Storable StructDate where
   sizeOf _    = #{size DATE_STRUCT}
-  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  alignment _ = alignment (undefined :: CLong)
   poke p (StructDate year month day) = do
     #{poke DATE_STRUCT, year}  p year
     #{poke DATE_STRUCT, month} p month
@@ -518,7 +522,7 @@ data StructTime = StructTime
 
 instance Storable StructTime where
   sizeOf _    = #{size TIME_STRUCT}
-  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  alignment _ = alignment (undefined :: CLong)
   poke p (StructTime hour minute second) = do
     #{poke TIME_STRUCT, hour}   p hour
     #{poke TIME_STRUCT, minute} p minute
@@ -540,7 +544,7 @@ data StructTimestamp = StructTimestamp
 
 instance Storable StructTimestamp where
   sizeOf _    = #{size TIMESTAMP_STRUCT}
-  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
+  alignment _ = alignment (undefined :: CLong)
   poke p (StructTimestamp year month day hour minute second fraction) = do
     #{poke TIMESTAMP_STRUCT, year}      p year
     #{poke TIMESTAMP_STRUCT, month}     p month
@@ -559,26 +563,25 @@ instance Storable StructTimestamp where
     `ap` (#{peek TIMESTAMP_STRUCT, fraction} p)
 
 -- | StructGUID
--- TODO: Check the peek/poke of the struct member that's an array
-data StructGUID = StructGUID
-  #{type DWORD}     -- ^ Data1
-  #{type WORD}      -- ^ Data2
-  #{type WORD}      -- ^ Data3
-  [#{type BYTE}]    -- ^ Data4[8]
-
-instance Storable StructGUID where
-  sizeOf _ = #{size SQLGUID}
-  alignment _ = alignment (undefined :: CInt) -- TODO: check this is correct
-  poke p (StructGUID data1 data2 data3 data4) = do
-    #{poke SQLGUID, Data1} p data1
-    #{poke SQLGUID, Data2} p data2
-    #{poke SQLGUID, Data3} p data3
-    pokeArray (p `plusPtr` #{offset SQLGUID, Data4}) data4
-  peek p = return StructGUID
-    `ap` (#{peek SQLGUID, Data1} p)
-    `ap` (#{peek SQLGUID, Data2} p)
-    `ap` (#{peek SQLGUID, Data3} p)
-    `ap` (peekArray 8 (p `plusPtr` #{offset SQLGUID, Data4}))
+-- data StructGUID = StructGUID
+--   #{type DWORD}     -- ^ Data1
+--   #{type WORD}      -- ^ Data2
+--   #{type WORD}      -- ^ Data3
+--   [#{type BYTE}]    -- ^ Data4[8]
+-- 
+-- instance Storable StructGUID where
+--   sizeOf _ = #{size SQLGUID}
+--   alignment _ = alignment (undefined :: CLong)
+--   poke p (StructGUID data1 data2 data3 data4) = do
+--     #{poke SQLGUID, Data1} p data1
+--     #{poke SQLGUID, Data2} p data2
+--     #{poke SQLGUID, Data3} p data3
+--     pokeArray (p `plusPtr` #{offset SQLGUID, Data4}) data4
+--   peek p = return StructGUID
+--     `ap` (#{peek SQLGUID, Data1} p)
+--     `ap` (#{peek SQLGUID, Data2} p)
+--     `ap` (#{peek SQLGUID, Data3} p)
+--     `ap` (peekArray 8 (p `plusPtr` #{offset SQLGUID, Data4}))
 
 
 -- | This function binds the data in a column to a value of type
@@ -634,7 +637,8 @@ mkBindCol sstate cstmt col = do
     SqlDateT          -> mkBindColDate      cstmt col' (colSize colDesc)
     SqlTimeT          -> mkBindColTime      cstmt col' (colSize colDesc)
     SqlTimestampT     -> mkBindColTimestamp cstmt col' (colSize colDesc)
-    SqlIntervalT i    -> mkBindColInterval  cstmt col' (colSize colDesc) i
+--    SqlIntervalT i    -> mkBindColInterval  cstmt col' (colSize colDesc) i
+    SqlIntervalT _    -> mkBindColBinary    cstmt col' (colSize colDesc)
 --    SqlGUIDT          -> mkBindColGUID      cstmt col' (colSize colDesc)
     SqlGUIDT          -> mkBindColBinary    cstmt col' (colSize colDesc)
     SqlUnknownT s     -> mkBindColUnknown   cstmt col' (colSize colDesc) s
@@ -742,7 +746,7 @@ mkBindColTimestamp cstmt col mColSize = do
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTimestamp buf, pStrLen)
-mkBindColInterval cstmt col mColsize interval = mkBindColUnknown cstmt col mColsize "Interval"
+-- mkBindColInterval cstmt col mColsize interval = mkBindColUnknown cstmt col mColsize "Interval"
 -- mkBindColGUID cstmt col mColsize = mkBindColUnknown cstmt col mColsize "GUID"
 mkBindColUnknown cstmt col mColSize str = do
   l "mkBindCol: BindColUnknown"
@@ -793,10 +797,6 @@ bindColToSqlValue' (BindColWString buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
   l2 $ "bindColToSqlValue BindColWString " ++ show bs
   return $ SqlByteString bs
-bindColToSqlValue' (BindColUnknown buf) strLen = do
-  bs <- B.packCStringLen (buf, fromIntegral strLen)
-  l2 $ "bindColToSqlValue BindColUnknown " ++ show bs
-  return $ SqlByteString bs
 bindColToSqlValue' (BindColBit     buf) strLen = do
   bit <- peek buf
   l2 $ "bindColToSqlValue BindColBit " ++ show bit
@@ -828,6 +828,10 @@ bindColToSqlValue' (BindColDouble  buf) strLen = do
 bindColToSqlValue' (BindColBinary  buf) strLen = do
   bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
   l2 $ "bindColToSqlValue BindColBinary " ++ show bs
+  return $ SqlByteString bs
+bindColToSqlValue' (BindColUnknown buf) strLen = do
+  bs <- B.packCStringLen (buf, fromIntegral strLen)
+  l2 $ "bindColToSqlValue BindColUnknown " ++ show bs
   return $ SqlByteString bs
 bindColToSqlValue' (BindColDate buf) strLen = do
   StructDate year month day <- peek buf
