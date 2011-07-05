@@ -448,7 +448,7 @@ data BindCol
 -- Intervals and GUIDs have not been implemented, since there is no
 -- equivalent SqlValue for these.
 --
---  | BindColInterval -- TODO
+--  | BindColInterval
 --      typedef struct tagSQL_INTERVAL_STRUCT
 --      {
 --         SQLINTERVAL interval_type; 
@@ -787,7 +787,6 @@ bindColToSqlValue (bindCol, pStrLen) = do
     #{const SQL_NO_TOTAL}  -> fail $ "Unexpected SQL_NO_TOTAL"
     _                      -> bindColToSqlValue' bindCol strLen
 
--- TODO: Cover all the BindCol cases
 bindColToSqlValue' :: BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' (BindColString buf) strLen = do
   bs <- B.packCStringLen (buf, fromIntegral strLen)
@@ -843,16 +842,13 @@ bindColToSqlValue' (BindColTime buf) strLen = do
   l2 $ "bindColToSqlValue BindColTime"
   return $ SqlLocalTimeOfDay $ TimeOfDay
     (fromIntegral hour) (fromIntegral minute) (fromIntegral second)
--- TODO: We ignore the fractions of a second.
--- The alternative is to return this as binary data instead.
 bindColToSqlValue' (BindColTimestamp buf) strLen = do
-  StructTimestamp year month day hour minute second fraction <- peek buf
+  StructTimestamp year month day hour minute second nanosecond <- peek buf
   l2 $ "bindColToSqlValue BindColTimestamp"
   return $ SqlLocalTime $ LocalTime
     (fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day))
-    (TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second))
-
-
+    (TimeOfDay (fromIntegral hour) (fromIntegral minute)
+    (fromIntegral second + (fromIntegral nanosecond / 1000000000)))
 
 fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
