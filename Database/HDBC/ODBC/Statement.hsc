@@ -881,16 +881,16 @@ public_ffinish sstate = do
   modifyMVar_ (stomv sstate) freeMStmt
   bindColsEmpty <- isEmptyMVar (bindColsMV sstate)
   if bindColsEmpty
-    then do l "public_ffinish: bindColsEmpty" 
-            return ()
-    else do l "public_ffinish: not bindColsEmpty" 
-            modifyMVar_ (bindColsMV sstate) freeBindCols
+    then do
+      l "public_ffinish: bindColsEmpty"
+      return ()
+    else do
+      l "public_ffinish: not bindColsEmpty"
+      bindCols <- takeMVar (bindColsMV sstate)
+      mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
  where
   freeMStmt Nothing    = return Nothing
   freeMStmt (Just sth) = ffinish sth >> return Nothing
-  freeBindCols bindCols = do
-    mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
-    return []
 
 ffinish :: Stmt -> IO ()
 ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
