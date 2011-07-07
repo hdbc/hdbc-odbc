@@ -96,7 +96,7 @@ data SState = SState
   , dbo        :: Conn
   , squery     :: String
   , colinfomv  :: MVar [(String, SqlColDesc)]
-  , bindColsMV :: MVar [(BindCol, Ptr #{type SQLLEN})]
+  , bindColsMV :: MVar (Maybe [(BindCol, Ptr #{type SQLLEN})])
   }
 
 -- FIXME: we currently do no prepare optimization whatsoever.
@@ -105,7 +105,7 @@ newSState :: Conn -> String -> IO SState
 newSState indbo query =
     do newstomv     <- newMVar Nothing
        newcolinfomv <- newMVar []
-       newBindCols  <- newEmptyMVar
+       newBindCols  <- newMVar Nothing
        return SState
          { stomv      = newstomv
          , dbo        = indbo
@@ -415,13 +415,25 @@ ffetchrowBindCol sstate = modifyMVar (stomv sstate) $ \stmt -> do
 getBindCols :: SState -> Ptr CStmt -> IO [(BindCol, Ptr #{type SQLLEN})]
 getBindCols sstate cstmt = do
   l "getBindCols"
-  bindColsEmpty <- isEmptyMVar (bindColsMV sstate)
-  if bindColsEmpty
-    then do cols <- getNumResultCols cstmt
-            pBindCols <- mapM (mkBindCol sstate cstmt) [1 .. cols]
-            putMVar (bindColsMV sstate) pBindCols
-            return pBindCols
-    else readMVar (bindColsMV sstate)
+  modifyMVar (bindColsMV sstate) $ \mBindCols ->
+    case mBindCols of
+      Nothing -> do
+        cols <- getNumResultCols cstmt
+        pBindCols <- mapM (mkBindCol sstate cstmt) [1 .. cols]
+        return (Just pBindCols, pBindCols)
+      Just bindCols -> do
+        return (mBindCols, bindCols)
+
+-- | ffetchrowBaseline is used for benchmarking fetches without the
+-- overhead of marshalling values.
+ffetchrowBaseline sstate = do
+  Just cmstmt <- readMVar (stomv sstate)
+  withStmt cmstmt $ \cstmt -> do
+    rc <- sqlFetch cstmt
+    if rc == #{const SQL_NO_DATA}
+      then do ffinish cmstmt
+              return Nothing
+      else do return (Just [])
 
 data ColBuf
 
@@ -809,6 +821,7 @@ bindColToSqlValue' (BindColShort   buf) strLen = do
   l2 $ "bindColToSqlValue BindColShort" ++ show short
   return $ SqlInt32 (fromIntegral short)
 bindColToSqlValue' (BindColLong    buf) strLen = do
+  -- return $ SqlInt32 1
   long <- peek buf
   l2 $ "bindColToSqlValue BindColLong " ++ show long
   return $ SqlInt32 (fromIntegral long)
@@ -817,10 +830,12 @@ bindColToSqlValue' (BindColBigInt  buf) strLen = do
   l2 $ "bindColToSqlValue BindColBigInt " ++ show bigInt
   return $ SqlInt64 (fromIntegral bigInt)
 bindColToSqlValue' (BindColFloat   buf) strLen = do
+  -- return $ SqlDouble 1
   float <- peek buf
   l2 $ "bindColToSqlValue BindColFloat " ++ show float
   return $ SqlDouble (realToFrac float)
 bindColToSqlValue' (BindColDouble  buf) strLen = do
+  -- return $ SqlDouble 1
   double <- peek buf
   l2 $ "bindColToSqlValue BindColDouble " ++ show double
   return $ SqlDouble (realToFrac double)
@@ -879,14 +894,15 @@ public_ffinish :: SState -> IO ()
 public_ffinish sstate = do
   l "public_ffinish"
   modifyMVar_ (stomv sstate) freeMStmt
-  mBindCols <- tryTakeMVar (bindColsMV sstate)
-  maybe (return ()) freeBindCols mBindCols
+  modifyMVar_ (bindColsMV sstate) freeBindCols
  where
   freeMStmt Nothing    = return Nothing
   freeMStmt (Just sth) = ffinish sth >> return Nothing
-  freeBindCols bindCols = do
+  freeBindCols Nothing = return Nothing
+  freeBindCols (Just bindCols) = do
     l "public_ffinish: freeing bindcols"
     mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
+    return Nothing
 
 ffinish :: Stmt -> IO ()
 ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
