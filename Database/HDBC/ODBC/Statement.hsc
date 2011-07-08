@@ -310,9 +310,6 @@ cstrUtf8BString bs = do
         -- return ptr
         return (res, len)
 
--- TODO: case where the buf length is very large (assume 4K intead)
--- TODO: case where the buf length is unknown
--- TODO: use getColData when the buf needs it, or when the type is not known
 ffetchrow :: SState -> IO (Maybe [SqlValue])
 ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> do
   l2 $ "ffetchrow"
@@ -352,11 +349,10 @@ getBindCols sstate cstmt = do
 -- TODO: This code does not deal well with data that is extremely large,
 -- where multiple fetches are required.
 getColData cstmt cBinding icol = do
-  let defaultLen = 128
   alloca $ \plen ->
-   allocaBytes defaultLen $ \buf ->
+   allocaBytes colBufSizeDefault $ \buf ->
      do res <- sqlGetData cstmt (fromIntegral icol) cBinding
-                          buf (fromIntegral defaultLen) plen
+                          buf (fromIntegral colBufSizeDefault) plen
         case res of
           #{const SQL_SUCCESS} ->
               do len <- peek plen
@@ -374,8 +370,8 @@ getColData cstmt cBinding icol = do
                                  >>= checkError "sqlGetData" (StmtHandle cstmt)
                       len2 <- peek plen
                       let firstbuf = case cBinding of
-                                       #{const SQL_C_BINARY} -> defaultLen
-                                       _ -> defaultLen - 1 -- strip off NUL
+                                       #{const SQL_C_BINARY} -> colBufSizeDefault
+                                       _ -> colBufSizeDefault - 1 -- strip off NUL
                       bs <- liftM2 (B.append) (B.packCStringLen (buf, firstbuf))
                             (B.packCStringLen (buf2, fromIntegral len2))
                       l $ "col is: " ++ (BUTF8.toString bs)
@@ -618,10 +614,13 @@ mkBindCol sstate cstmt col = do
  where
   col' = fromIntegral col
 
+colBufSizeDefault = 1024
+colBufSizeMaximum = 4096
+
 -- The functions that follow do the marshalling from C into a Haskell type
 mkBindColString cstmt col mColSize = do
   l "mkBindCol: BindColString"
-  let colSize = fromMaybe 128 mColSize
+  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
@@ -629,7 +628,7 @@ mkBindColString cstmt col mColSize = do
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
 mkBindColWString cstmt col mColSize = do
   l "mkBindCol: BindColWString"
-  let colSize = fromMaybe 128 mColSize
+  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
@@ -686,7 +685,7 @@ mkBindColDouble cstmt col mColSize = do
   return (BindColDouble buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
   l "mkBindCol: BindColBinary"
-  let colSize = fromMaybe 128 mColSize
+  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CUChar) * (colSize + 1)
   buf     <- malloc
   pStrLen <- malloc
@@ -751,6 +750,8 @@ bindColToSqlValue pcstmt (bindCol, pStrLen) = do
     #{const SQL_NO_TOTAL}  -> fail $ "Unexpected SQL_NO_TOTAL"
     _                      -> bindColToSqlValue' pcstmt bindCol strLen
 
+-- | This is a worker function for `bindcolToSqlValue`. Note that the case
+-- where the data is null should already be handled by this stage.
 bindColToSqlValue' :: Ptr CStmt -> BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' pcstmt (BindColString buf bufLen col) strLen
   | bufLen >= strLen = do
