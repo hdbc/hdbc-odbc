@@ -43,10 +43,6 @@ l :: String -> IO ()
 l _ = return ()
 -- l m = hPutStrLn stderr ("\n" ++ m)
 
-l2 :: String -> IO ()
-l2 _ = return ()
--- l2 m = hPutStrLn stderr (m)
-
 #ifdef mingw32_HOST_OS
 #include <windows.h>
 #endif
@@ -312,10 +308,10 @@ cstrUtf8BString bs = do
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
 ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> do
-  l2 $ "ffetchrow"
+  l $ "ffetchrow"
   case stmt of
     Nothing -> do
-      l2 "ffetchrow: no statement"
+      l "ffetchrow: no statement"
       return (stmt, Nothing)
     Just cmstmt -> withStmt cmstmt $ \cstmt -> do
       bindCols <- getBindCols sstate cstmt
@@ -740,10 +736,10 @@ freeBindCol (BindColGetData  _ )   = return ()
 --     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
 bindColToSqlValue :: Ptr CStmt -> (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue pcstmt (BindColGetData col, _) = do
-  l2 "bindColToSqlValue: BindColGetData"
+  l "bindColToSqlValue: BindColGetData"
   getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue pcstmt (bindCol, pStrLen) = do
-  l2 "bindColToSqlValue"
+  l "bindColToSqlValue"
   strLen <- peek pStrLen
   case strLen of
     #{const SQL_NULL_DATA} -> return SqlNull
@@ -756,62 +752,62 @@ bindColToSqlValue' :: Ptr CStmt -> BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' pcstmt (BindColString buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (buf, fromIntegral strLen)
-      l2 $ "bindColToSqlValue BindColString " ++ show bs ++ " " ++ show strLen
+      l $ "bindColToSqlValue BindColString " ++ show bs ++ " " ++ show strLen
       return $ SqlByteString bs
   | otherwise = getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue' pcstmt (BindColWString buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
-      l2 $ "bindColToSqlValue BindColWString " ++ show bs ++ " " ++ show strLen
+      l $ "bindColToSqlValue BindColWString " ++ show bs ++ " " ++ show strLen
       return $ SqlByteString bs
   | otherwise = getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue' _ (BindColBit     buf) strLen = do
   bit <- peek buf
-  l2 $ "bindColToSqlValue BindColBit " ++ show bit
+  l $ "bindColToSqlValue BindColBit " ++ show bit
   return $ SqlChar (castCUCharToChar bit)
 bindColToSqlValue' _ (BindColTinyInt buf) strLen = do
   tinyInt <- peek buf
-  l2 $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
+  l $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
   return $ SqlChar (castCCharToChar tinyInt)
 bindColToSqlValue' _ (BindColShort   buf) strLen = do
   short <- peek buf
-  l2 $ "bindColToSqlValue BindColShort" ++ show short
+  l $ "bindColToSqlValue BindColShort" ++ show short
   return $ SqlInt32 (fromIntegral short)
 bindColToSqlValue' _ (BindColLong    buf) strLen = do
   long <- peek buf
-  l2 $ "bindColToSqlValue BindColLong " ++ show long
+  l $ "bindColToSqlValue BindColLong " ++ show long
   return $ SqlInt32 (fromIntegral long)
 bindColToSqlValue' _ (BindColBigInt  buf) strLen = do
   bigInt <- peek buf
-  l2 $ "bindColToSqlValue BindColBigInt " ++ show bigInt
+  l $ "bindColToSqlValue BindColBigInt " ++ show bigInt
   return $ SqlInt64 (fromIntegral bigInt)
 bindColToSqlValue' _ (BindColFloat   buf) strLen = do
   float <- peek buf
-  l2 $ "bindColToSqlValue BindColFloat " ++ show float
+  l $ "bindColToSqlValue BindColFloat " ++ show float
   return $ SqlDouble (realToFrac float)
 bindColToSqlValue' _ (BindColDouble  buf) strLen = do
   double <- peek buf
-  l2 $ "bindColToSqlValue BindColDouble " ++ show double
+  l $ "bindColToSqlValue BindColDouble " ++ show double
   return $ SqlDouble (realToFrac double)
 bindColToSqlValue' pcstmt (BindColBinary  buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
-      l2 $ "bindColToSqlValue BindColBinary " ++ show bs
+      l $ "bindColToSqlValue BindColBinary " ++ show bs
       return $ SqlByteString bs
   | otherwise = getColData pcstmt (#{const SQL_C_BINARY}) col
 bindColToSqlValue' _ (BindColDate buf) strLen = do
   StructDate year month day <- peek buf
-  l2 $ "bindColToSqlValue BindColDate"
+  l $ "bindColToSqlValue BindColDate"
   return $ SqlLocalDate $ fromGregorian
     (fromIntegral year) (fromIntegral month) (fromIntegral day)
 bindColToSqlValue' _ (BindColTime buf) strLen = do
   StructTime hour minute second <- peek buf
-  l2 $ "bindColToSqlValue BindColTime"
+  l $ "bindColToSqlValue BindColTime"
   return $ SqlLocalTimeOfDay $ TimeOfDay
     (fromIntegral hour) (fromIntegral minute) (fromIntegral second)
 bindColToSqlValue' _ (BindColTimestamp buf) strLen = do
   StructTimestamp year month day hour minute second nanosecond <- peek buf
-  l2 $ "bindColToSqlValue BindColTimestamp"
+  l $ "bindColToSqlValue BindColTimestamp"
   return $ SqlLocalTime $ LocalTime
     (fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day))
     (TimeOfDay (fromIntegral hour) (fromIntegral minute)
