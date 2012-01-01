@@ -12,7 +12,7 @@ extra-source-files: LICENSE, hdbc-odbc-helper.h,
                     README.txt,
                     TODO,
                     testsrc/TestTime.hs
-homepage: https://github.com/hdbc/hdbc-odbc/wiki
+homepage: https://github.com/hdbc/hdbc-odbc
 Category: Database
 synopsis: ODBC driver for HDBC
 Description: This package provides an ODBC database backend for HDBC.
