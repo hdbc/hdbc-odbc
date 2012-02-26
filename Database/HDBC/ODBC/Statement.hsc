@@ -683,7 +683,7 @@ mkBindColBinary cstmt col mColSize = do
   l "mkBindCol: BindColBinary"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CUChar) * (colSize + 1)
-  buf     <- malloc
+  buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBinary buf (fromIntegral bufLen) col, pStrLen)
