@@ -46,6 +46,50 @@ want.  It is a bug (or misfeature) in the MySQL driver, not in HDBC.
 
 You should ignore this advice if you are using InnoDB tables.
 
+Getting Started
+---------------
+
+Here are some instructions to set up ODBC with a sqlite3 backend, and how
+to communicate with that database with HDBC-ODBC.
+These instructions are written to work with Ubuntu 11.10.
+
+First, we'll need to install the appropriate libraries:
+
+    sudo apt-get install unixodbc unixodbc-dev unixodbc-bin
+    sudo apt-get install libsqliteodbc
+
+Verify that the sqlite ODBC drivers have been set up correctly:
+
+    odbcinst -q -d
+This should return:
+
+    [SQLite]
+    [SQLite3]
+
+Next, fire up the `ODBCConfig` too to set up a new DSN:
+
+    ODBCConfig
+
+If you want to run the HDBC test suite, then set your DSN to `hdbctest`,
+and set up to connect to a database of your choice, such as an empty file
+in the `hdbc-odbc/testsrc` directory:
+
+    touch hdbc-odbc/testsrc/hdbctest.db
+
+You can check that everything is working appropriately in ghci:
+
+    ghci> :m + Database.HDBC Database.HDBC.ODBC
+    ghci> conn <- connectODBC "DSN=hdbctest"
+    ghci> hdbcDriverName conn
+    "odbc"
+    ghci> hdbcClientVer conn
+    "03.52"
+
+You can then run some tests on your database:
+
+    cd testsrc
+    runhaskell runtests.hs
+
 Contributing
 ------------
 
