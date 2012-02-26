@@ -9,6 +9,11 @@ openClosedb = sqlTestCase $
     do dbh <- connectDB
        disconnect dbh
 
+singleFinish = dbTestCase $ \dbh ->
+    do sth <- prepare dbh "SELECT 1 + 1"
+       sExecute sth []
+       finish sth
+
 multiFinish = dbTestCase (\dbh ->
     do sth <- prepare dbh "SELECT 1 + 1"
        sExecute sth []
@@ -137,6 +142,7 @@ testWithTransaction = dbTestCase (\dbh ->
 tests = TestList
         [
          TestLabel "openClosedb" openClosedb,
+         TestLabel "singleFinish" singleFinish,
          TestLabel "multiFinish" multiFinish,
          TestLabel "basicQueries" basicQueries,
          TestLabel "createTable" createTable,
