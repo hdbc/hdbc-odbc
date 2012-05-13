@@ -1,7 +1,7 @@
 -- -*- mode: haskell; -*-
 {-# CFILES hdbc-odbc-helper.c #-}
 -- Above line for hugs
-{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE DoAndIfThenElse, EmptyDataDecls #-}
 
 module Database.HDBC.ODBC.Statement (
    fGetQueryInfo,
@@ -341,6 +341,35 @@ getBindCols sstate cstmt = do
         return (Just pBindCols, pBindCols)
       Just bindCols -> do
         return (mBindCols, bindCols)
+
+-- This is only for String data. For binary fix should be very easy. Just check the column type and use buflen instead of buflen - 1
+getLongColData cstmt bindCol = do
+   let (BindColString buf bufLen col) = bindCol
+   l $ "buflen: " ++ show bufLen
+   bs <- B.packCStringLen (buf, fromIntegral (bufLen - 1))
+   l $ "sql_no_total col " ++ show (BUTF8.toString bs)
+   bs2 <- getRestLongColData cstmt #{const SQL_CHAR} col bs
+   return $ SqlByteString bs2
+
+
+getRestLongColData cstmt cBinding icol acc = do
+  l "getLongColData"
+  alloca $ \plen ->
+   allocaBytes colBufSizeMaximum $ \buf ->
+     do res <- sqlGetData cstmt (fromIntegral icol) cBinding
+                          buf (fromIntegral colBufSizeMaximum) plen
+        if res == #{const SQL_SUCCESS} || res == #{const SQL_SUCCESS_WITH_INFO} then do
+                 len <- peek plen
+                 if len == #{const SQL_NO_DATA} then return acc
+                 else do
+                      let bufmax = fromIntegral $ colBufSizeMaximum - 1
+                      bs <- B.packCStringLen (buf, fromIntegral (if len == #{const SQL_NO_TOTAL} || len > bufmax then bufmax else len))
+                      l $ "sql_no_total col is: " ++ show (BUTF8.toString bs)
+                      let newacc = B.append acc bs
+                      if len /= #{const SQL_NO_TOTAL} && len <= bufmax then
+                         return newacc
+                      else getRestLongColData cstmt cBinding icol newacc
+        else  raiseError "sqlGetData" res (StmtHandle cstmt)
 
 -- TODO: This code does not deal well with data that is extremely large,
 -- where multiple fetches are required.
@@ -743,7 +772,7 @@ bindColToSqlValue pcstmt (bindCol, pStrLen) = do
   strLen <- peek pStrLen
   case strLen of
     #{const SQL_NULL_DATA} -> return SqlNull
-    #{const SQL_NO_TOTAL}  -> fail $ "Unexpected SQL_NO_TOTAL"
+    #{const SQL_NO_TOTAL}  -> getLongColData pcstmt bindCol    
     _                      -> bindColToSqlValue' pcstmt bindCol strLen
 
 -- | This is a worker function for `bindcolToSqlValue`. Note that the case
