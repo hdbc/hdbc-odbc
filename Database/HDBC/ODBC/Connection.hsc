@@ -184,45 +184,45 @@ fdisconnect iconn mchildren  = withRawConn iconn $ \rawconn ->
        -- FIXME: will this checkError segfault?
        checkError "disconnect" (DbcHandle $ llconn) res
 
-foreign import #{CALLCONV} unsafe "sql.h SQLAllocHandle"
+foreign import #{CALLCONV} safe "sql.h SQLAllocHandle"
   sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
                     Ptr () -> IO (#{type SQLRETURN})
 
-foreign import ccall unsafe "hdbc-odbc-helper.h wrapobjodbc_extra"
+foreign import ccall safe "hdbc-odbc-helper.h wrapobjodbc_extra"
   wrapconn :: Ptr CConn -> Ptr CEnv -> Ptr WrappedCConn -> IO (Ptr WrappedCConn)
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
+foreign import ccall safe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
   sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
+foreign import ccall safe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
   sqlFreeHandleDbc_app :: Ptr WrappedCConn -> IO (#{type SQLRETURN})
 
-foreign import #{CALLCONV} unsafe "sql.h SQLSetEnvAttr"
+foreign import #{CALLCONV} safe "sql.h SQLSetEnvAttr"
   sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
                    Ptr () -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLDriverConnect"
+foreign import #{CALLCONV} safe "sql.h SQLDriverConnect"
   sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
                    -> CString -> #{type SQLSMALLINT}
                    -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
                    -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h getSqlOvOdbc3"
+foreign import ccall safe "hdbc-odbc-helper.h getSqlOvOdbc3"
   getSqlOvOdbc3 :: Ptr ()
 
-foreign import ccall unsafe "hdbc-odbc-helper.h SQLSetConnectAttr"
+foreign import ccall safe "hdbc-odbc-helper.h SQLSetConnectAttr"
   sqlSetConnectAttr :: Ptr CConn -> #{type SQLINTEGER} 
                     -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
                     -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLEndTran"
+foreign import #{CALLCONV} safe "sql.h SQLEndTran"
   sqlEndTran :: #{type SQLSMALLINT} -> Ptr CConn -> #{type SQLSMALLINT}
              -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h disableAutoCommit"
+foreign import ccall safe "hdbc-odbc-helper.h disableAutoCommit"
   disableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLGetInfo"
+foreign import #{CALLCONV} safe "sql.h SQLGetInfo"
   sqlGetInfo :: Ptr CConn -> #{type SQLUSMALLINT} -> Ptr () ->
                 #{type SQLSMALLINT} -> Ptr #{type SQLSMALLINT} ->
                 IO #{type SQLRETURN}
