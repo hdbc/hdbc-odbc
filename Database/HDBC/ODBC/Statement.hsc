@@ -889,10 +889,10 @@ ffinish :: Stmt -> IO ()
 ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
 
 
-foreign import ccall unsafe "hdbc-odbc-helper.h wrapobjodbc"
+foreign import ccall safe "hdbc-odbc-helper.h wrapobjodbc"
   wrapstmt :: Ptr CStmt -> Ptr WrappedCConn -> IO (Ptr WrappedCStmt)
 
-foreign import #{CALLCONV} unsafe "sql.h SQLDescribeCol"
+foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
   sqlDescribeCol :: Ptr CStmt   
                  -> #{type SQLSMALLINT} -- ^ Column number
                  -> CString     -- ^ Column name
@@ -904,7 +904,7 @@ foreign import #{CALLCONV} unsafe "sql.h SQLDescribeCol"
                  -> Ptr (#{type SQLSMALLINT}) -- ^ nullable ptr
                  -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLGetData"
+foreign import #{CALLCONV} safe "sql.h SQLGetData"
   sqlGetData :: Ptr CStmt       -- ^ statement handle
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT} -- ^ target type
@@ -913,7 +913,7 @@ foreign import #{CALLCONV} unsafe "sql.h SQLGetData"
              -> Ptr (#{type SQLLEN})
              -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLBindCol"
+foreign import #{CALLCONV} safe "sql.h SQLBindCol"
   sqlBindCol :: Ptr CStmt            -- ^ statement handle
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT}  -- ^ target type
@@ -922,31 +922,31 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindCol"
              -> Ptr (#{type SQLLEN}) -- ^ strlen_or_indptr
              -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
+foreign import ccall safe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
   sqlFreeHandleSth_app :: Ptr WrappedCStmt -> IO ()
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &sqlFreeHandleSth_finalizer"
+foreign import ccall safe "hdbc-odbc-helper.h &sqlFreeHandleSth_finalizer"
   sqlFreeHandleSth_ptr :: FunPtr (Ptr WrappedCStmt -> IO ())
 
-foreign import #{CALLCONV} unsafe "sql.h SQLPrepare"
+foreign import #{CALLCONV} safe "sql.h SQLPrepare"
   sqlPrepare :: Ptr CStmt -> CString -> #{type SQLINTEGER} 
              -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLExecute"
+foreign import #{CALLCONV} safe "sql.h SQLExecute"
   sqlExecute :: Ptr CStmt -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLAllocHandle"
+foreign import #{CALLCONV} safe "sql.h SQLAllocHandle"
   sqlAllocStmtHandle :: #{type SQLSMALLINT} -> Ptr CConn ->
                         Ptr (Ptr CStmt) -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLNumResultCols"
+foreign import #{CALLCONV} safe "sql.h SQLNumResultCols"
   sqlNumResultCols :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
                    -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLRowCount"
+foreign import #{CALLCONV} safe "sql.h SQLRowCount"
   sqlRowCount :: Ptr CStmt -> Ptr #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
+foreign import #{CALLCONV} safe "sql.h SQLBindParameter"
   sqlBindParameter :: Ptr CStmt -- ^ Statement handle
                    -> #{type SQLUSMALLINT} -- ^ Parameter Number
                    -> #{type SQLSMALLINT} -- ^ Input or output
@@ -959,10 +959,10 @@ foreign import #{CALLCONV} unsafe "sql.h SQLBindParameter"
                    -> Ptr #{type SQLLEN} -- ^ strlen_or_indptr
                    -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h &nullDataHDBC"
+foreign import ccall safe "hdbc-odbc-helper.h &nullDataHDBC"
   nullDataHDBC :: Ptr #{type SQLLEN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
+foreign import #{CALLCONV} safe "sql.h SQLDescribeParam"
   sqlDescribeParam :: Ptr CStmt 
                    -> #{type SQLUSMALLINT} -- ^ parameter number
                    -> Ptr #{type SQLSMALLINT} -- ^ data type ptr
@@ -971,13 +971,13 @@ foreign import #{CALLCONV} unsafe "sql.h SQLDescribeParam"
                    -> Ptr #{type SQLSMALLINT} -- ^ nullable ptr
                    -> IO #{type SQLRETURN}
 
-foreign import #{CALLCONV} unsafe "sql.h SQLFetch"
+foreign import #{CALLCONV} safe "sql.h SQLFetch"
   sqlFetch :: Ptr CStmt -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlTables"
+foreign import ccall safe "hdbc-odbc-helper.h simpleSqlTables"
   simpleSqlTables :: Ptr CStmt -> IO #{type SQLRETURN}
 
-foreign import ccall unsafe "hdbc-odbc-helper.h simpleSqlColumns"
+foreign import ccall safe "hdbc-odbc-helper.h simpleSqlColumns"
   simpleSqlColumns :: Ptr CStmt -> Ptr CChar -> 
                       #{type SQLSMALLINT} -> IO #{type SQLRETURN}
 
@@ -1007,6 +1007,6 @@ getNumParams sthptr = alloca $ \pcount ->
                                           (StmtHandle sthptr)
        peek pcount
 
-foreign import #{CALLCONV} unsafe "sql.h SQLNumParams"
+foreign import #{CALLCONV} safe "sql.h SQLNumParams"
   sqlNumParams :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
                -> IO #{type SQLRETURN}

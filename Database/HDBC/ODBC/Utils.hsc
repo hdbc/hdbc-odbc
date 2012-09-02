@@ -117,10 +117,10 @@ genericUnwrap fptr action = withForeignPtr fptr (\structptr ->
 isOK :: #{type SQLRETURN} -> Bool
 isOK r = sqlSucceeded r /= 0
 
-foreign import ccall unsafe "sqlSucceeded"
+foreign import ccall safe "sqlSucceeded"
   sqlSucceeded :: #{type SQLRETURN} -> CInt
 
-foreign import #{CALLCONV} unsafe "sql.h SQLGetDiagRec"
+foreign import #{CALLCONV} safe "sql.h SQLGetDiagRec"
   sqlGetDiagRec :: #{type SQLSMALLINT} -> Ptr () -> 
                    #{type SQLSMALLINT} -> CString -> Ptr (#{type SQLINTEGER})
                    -> CString -> #{type SQLSMALLINT} 
