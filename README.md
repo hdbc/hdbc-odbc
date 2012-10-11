@@ -46,6 +46,11 @@ want.  It is a bug (or misfeature) in the MySQL driver, not in HDBC.
 
 You should ignore this advice if you are using InnoDB tables.
 
+For the error "2013: Mysql server has gone away" error message, you'll have to
+use withRTSSignalsBlocked from the HDBC-mysql package.
+
+query conn stmStr binds = withRTSSignalsBlocked $ quickQuery conn stmStr binds
+
 Getting Started
 ---------------
 
