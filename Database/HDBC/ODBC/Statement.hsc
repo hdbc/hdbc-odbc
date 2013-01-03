@@ -489,9 +489,9 @@ data BindCol
 -- This struct, and the ones which follow, are described here:
 --     http://msdn.microsoft.com/en-us/library/ms714556(v=VS.85).aspx
 data StructDate = StructDate
-  #{type SQLSMALLINT}   -- ^ year
-  #{type SQLUSMALLINT}  -- ^ month
-  #{type SQLUSMALLINT}  -- ^ day
+  #{type SQLSMALLINT}   -- year
+  #{type SQLUSMALLINT}  -- month
+  #{type SQLUSMALLINT}  -- day
  deriving Show
 
 instance Storable StructDate where
@@ -509,9 +509,9 @@ instance Storable StructDate where
 
 -- | StructTime is used to marshals the TIME_STRUCT:
 data StructTime = StructTime
-  #{type SQLUSMALLINT} -- ^ hour
-  #{type SQLUSMALLINT} -- ^ minute
-  #{type SQLUSMALLINT} -- ^ second
+  #{type SQLUSMALLINT} -- hour
+  #{type SQLUSMALLINT} -- minute
+  #{type SQLUSMALLINT} -- second
 
 instance Storable StructTime where
   sizeOf _    = #{size TIME_STRUCT}
@@ -527,13 +527,13 @@ instance Storable StructTime where
 
 -- | StructTimestamp is used to marshal the TIMESTAMP_STRUCT;
 data StructTimestamp = StructTimestamp
-  #{type SQLSMALLINT}   -- ^ year
-  #{type SQLUSMALLINT}  -- ^ month
-  #{type SQLUSMALLINT}  -- ^ day
-  #{type SQLUSMALLINT}  -- ^ hour
-  #{type SQLUSMALLINT}  -- ^ minute
-  #{type SQLUSMALLINT}  -- ^ second
-  #{type SQLUINTEGER}   -- ^ fraction
+  #{type SQLSMALLINT}   -- year
+  #{type SQLUSMALLINT}  -- month
+  #{type SQLUSMALLINT}  -- day
+  #{type SQLUSMALLINT}  -- hour
+  #{type SQLUSMALLINT}  -- minute
+  #{type SQLUSMALLINT}  -- second
+  #{type SQLUINTEGER}   -- fraction
 
 instance Storable StructTimestamp where
   sizeOf _    = #{size TIMESTAMP_STRUCT}
