@@ -9,8 +9,7 @@ Copyright: Copyright (c) 2005-2011 John Goerzen
 license-file: LICENSE
 extra-source-files: LICENSE, hdbc-odbc-helper.h,
                     Makefile,
-                    README.txt,
-                    TODO,
+                    README.md,
                     testsrc/TestTime.hs
 homepage: https://github.com/hdbc/hdbc-odbc
 Category: Database
