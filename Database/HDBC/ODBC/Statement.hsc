@@ -644,10 +644,13 @@ mkBindCol sstate cstmt col = do
 colBufSizeDefault = 1024
 colBufSizeMaximum = 4096
 
+utf8EncodingMaximum = 6
+wcSize = 2
+
 -- The functions that follow do the marshalling from C into a Haskell type
 mkBindColString cstmt col mColSize = do
   l "mkBindCol: BindColString"
-  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
+  let colSize = min colBufSizeMaximum $ maybe colBufSizeDefault (* utf8EncodingMaximum) mColSize
   let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
@@ -655,7 +658,7 @@ mkBindColString cstmt col mColSize = do
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
 mkBindColWString cstmt col mColSize = do
   l "mkBindCol: BindColWString"
-  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
+  let colSize = min colBufSizeMaximum $ maybe colBufSizeDefault (* ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)) mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
