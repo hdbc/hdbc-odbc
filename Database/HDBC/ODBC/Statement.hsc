@@ -608,11 +608,11 @@ mkBindCol sstate cstmt col = do
   colInfo <- readMVar (colinfomv sstate)
   let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
   case colType colDesc of
-    SqlCharT          -> mkBindColString    cstmt col' (colSize colDesc)
-    SqlVarCharT       -> mkBindColString    cstmt col' (colSize colDesc)
+    SqlCharT          -> mkBindColStringEC  cstmt col' (colSize colDesc)
+    SqlVarCharT       -> mkBindColStringEC  cstmt col' (colSize colDesc)
     SqlLongVarCharT   -> mkBindColString    cstmt col' (colSize colDesc)
-    SqlWCharT         -> mkBindColWString   cstmt col' (colSize colDesc)
-    SqlWVarCharT      -> mkBindColWString   cstmt col' (colSize colDesc)
+    SqlWCharT         -> mkBindColWStringEC cstmt col' (colSize colDesc)
+    SqlWVarCharT      -> mkBindColWStringEC cstmt col' (colSize colDesc)
     SqlWLongVarCharT  -> mkBindColWString   cstmt col' (colSize colDesc)
     SqlDecimalT       -> mkBindColString    cstmt col' (colSize colDesc)
     SqlNumericT       -> mkBindColString    cstmt col' (colSize colDesc)
@@ -650,20 +650,23 @@ wcSize = 2
 -- The functions that follow do the marshalling from C into a Haskell type
 mkBindColString cstmt col mColSize = do
   l "mkBindCol: BindColString"
-  let colSize = min colBufSizeMaximum $ maybe colBufSizeDefault (* utf8EncodingMaximum) mColSize
+  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
+mkBindColStringEC cstmt col = mkBindColString cstmt col . fmap (* utf8EncodingMaximum)
 mkBindColWString cstmt col mColSize = do
   l "mkBindCol: BindColWString"
-  let colSize = min colBufSizeMaximum $ maybe colBufSizeDefault (* ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)) mColSize
+  let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
   buf     <- mallocBytes bufLen
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf (fromIntegral bufLen) col, pStrLen)
+mkBindColWStringEC cstmt col = mkBindColString cstmt col . fmap extendFactor  where
+  extendFactor sz = sz * ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)
 mkBindColBit cstmt col mColSize = do
   l "mkBindCol: BindColBit"
   let bufLen  = sizeOf (undefined :: CChar)
