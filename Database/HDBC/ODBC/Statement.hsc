@@ -21,6 +21,7 @@ import Foreign.C.String (castCUCharToChar)
 import Foreign.C.Types
 import Foreign.ForeignPtr
 import Foreign.Ptr
+import Control.Applicative
 import Control.Concurrent.MVar
 import Foreign.C.String
 import Foreign.Marshal
@@ -249,41 +250,44 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
     do l $ "Binding col " ++ show icol ++ ": " ++ show arg
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits pnullable
        l $ "rc1 is " ++ show (isOK rc1)
-       when (not (isOK rc1)) $ -- Some drivers don't support that call
-          do poke pdtype #{const SQL_CHAR}
-             poke pcolsize 0
-             poke pdecdigits 0
-       coltype <- peek pdtype
-       colsize <- peek pcolsize
-       decdigits <- peek pdecdigits
+       coltype <- if isOK rc1 then Just <$> peek pdtype else return Nothing
+       colsize <- if isOK rc1 then Just <$> peek pcolsize else return Nothing
+       decdigits <- if isOK rc1 then Just <$> peek pdecdigits else return Nothing
        l $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
                     do l "Binding null"
                        rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
-                              #{const SQL_C_CHAR} coltype colsize decdigits
+                              #{const SQL_C_CHAR} 
+                              (fromMaybe #{const SQL_CHAR} coltype)
+                              (fromMaybe 0 colsize)
+                              (fromMaybe 0 decdigits)
                               nullPtr 0 nullDataHDBC
                        checkError ("bindparameter NULL " ++ show icol)
                                       (StmtHandle sthptr) rc2
                        return Nothing
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
                  -- not freed now, and pass it along...
-                  (csptr, cslen) <- cstrUtf8BString (fromSql x)
+                  boundValue <- bindSqlValue x
                   do pcslen <- malloc 
-                     poke pcslen (fromIntegral cslen)
+                     poke pcslen . fromIntegral $ bvBufferSize boundValue
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
-                       #{const SQL_C_CHAR} coltype 
-                       (if isOK rc1 then colsize else fromIntegral cslen + 1) decdigits
-                       csptr (fromIntegral cslen + 1) pcslen
+                       (bvValueType boundValue) 
+                       (fromMaybe (bvDefaultColumnType boundValue) coltype)
+                       (fromMaybe (bvDefaultColumnSize boundValue) colsize) 
+                       (fromMaybe (bvDefaultDecDigits boundValue) decdigits)
+                       (castPtr $ bvBuffer boundValue)
+                       (bvBufferSize boundValue) 
+                       pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
-                                return $ Just (pcslen, csptr)
+                                return $ Just (pcslen, castPtr $ bvBuffer boundValue)
                         else do -- Binding failed.  Free the data and raise
                                 -- error.
                                 free pcslen
-                                free csptr
+                                free (bvBuffer boundValue)
                                 checkError ("bindparameter " ++ show icol) 
                                                (StmtHandle sthptr) rc2
                                 return Nothing -- will never get hit
@@ -294,17 +298,57 @@ getSqlRowCount cstmt = alloca $ \prows ->
         peek prows
         --note: As of ODBC-3.52, the row count is only a C int, ie 32bit.
 
+data BoundValue = BoundValue
+  -- | Type of the value in the buffer
+  { bvValueType         :: #{type SQLSMALLINT}
+  -- | Type of the SQL value to use if ODBC driver doesn't report one
+  , bvDefaultColumnType :: #{type SQLSMALLINT}
+  , bvDefaultColumnSize :: #{type SQLULEN}
+  , bvDefaultDecDigits  :: #{type SQLSMALLINT}
+  , bvBuffer            :: Ptr ()
+  , bvBufferSize        :: #{type SQLLEN}
+  } deriving (Show)
 
-cstrUtf8BString :: B.ByteString -> IO CStringLen
-cstrUtf8BString bs = do
-    B.unsafeUseAsCStringLen bs $ \(s,len) -> do
-        res <- mallocBytes (len+1)
-        -- copy in
-        copyBytes res s len
-        -- null terminate
-        poke (plusPtr res len) (0::CChar)
-        -- return ptr
-        return (res, len)
+-- | Marshals given SqlValue returning intended ValueType, default ColumnType,
+-- and a CStringLen with a buffer containing bound value. Pointer in the CStringLen 
+-- structure must be freed by caller
+bindSqlValue :: SqlValue -> IO BoundValue
+bindSqlValue sqlValue = case sqlValue of
+  SqlString s -> do
+    (wstrPtr, wstrLen) <- newCWStringLen s
+    let result = BoundValue 
+          { bvValueType         = #{const SQL_C_WCHAR}
+          , bvDefaultColumnType = #{const SQL_WCHAR}
+          , bvDefaultColumnSize = fromIntegral wstrLen
+          , bvDefaultDecDigits  = 0
+          , bvBuffer            = castPtr wstrPtr
+          , bvBufferSize        = fromIntegral $ wstrLen * #{size wchar_t}
+          }
+    l $ "bind SqlString " ++ s ++ ": " ++ show result
+    return result
+  SqlByteString bs -> B.unsafeUseAsCStringLen bs $ \(s,len) -> do
+    res <- mallocBytes len
+    copyBytes res s len
+    let result = BoundValue
+          { bvValueType         = #{const SQL_C_BINARY}
+          , bvDefaultColumnType = #{const SQL_BINARY}
+          , bvDefaultColumnSize = fromIntegral len
+          , bvDefaultDecDigits  = 0
+          , bvBuffer            = castPtr res
+          , bvBufferSize        = fromIntegral len
+          }
+    l $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
+    return result
+  -- | This is rather hacky, I just replicate the behaviour of a previous version
+  x -> do
+    l $ "bind other " ++ show x
+    bsResult <- bindSqlValue $ SqlByteString (fromSql x)
+    let result = bsResult
+          { bvValueType         = #{const SQL_C_CHAR}
+          , bvDefaultColumnType = #{const SQL_CHAR}
+          }
+    l $ "bound other " ++ show x ++ ": " ++ show result
+    return result
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
 ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> do
