@@ -1,0 +1,10 @@
+2.4.0.0 - 12 Nov 2014
+
+  * Changed parameter binding implementation to fix bugs with wide character strings and binary
+    data not handled well with Microsoft SQL Server on Windows.
+
+  * Implemented atomic reference counting to avoid race conditions in native code when running
+    with -threaded
+
+  * Implemented workaround for the SQL Server ODBC Driver deadlock, which occured if cursor over a
+    statement that was in the process of fetching data over the network got closed.
