@@ -1,6 +1,6 @@
 Name: HDBC-odbc
 Version: 2.3.1.1
-Cabal-Version: >=1.2.3
+Cabal-Version: >=1.8
 Build-type: Simple
 License: BSD3
 Maintainer: Nicolas Wu <nicolas.wu@gmail.com>
@@ -24,6 +24,10 @@ Flag buildtests
   description: Build the executable to run unit tests
   default: False
 
+Flag buildstresstest
+  description: Build the stress testing executable
+  default: False
+
 Library
   Exposed-Modules: Database.HDBC.ODBC
   Other-Modules: Database.HDBC.ODBC.Connection,
@@ -32,7 +36,7 @@ Library
     Database.HDBC.ODBC.Utils,
     Database.HDBC.ODBC.TypeConv,
     Database.HDBC.ODBC.ConnectionImpl
-  Extensions: 
+  Extensions:
     ExistentialQuantification,
     ForeignFunctionInterface,
     ScopedTypeVariables
@@ -42,14 +46,13 @@ Library
                , time>=1.2.0.3
                , utf8-string
                , bytestring
-  GHC-Options: -O2
   C-Sources: hdbc-odbc-helper.c
   if os(mingw32) || os(win32)
     Extra-Libraries: odbc32
   else
     Extra-Libraries: odbc
   include-dirs: .
-  -- extra-lib-dirs: 
+  -- extra-lib-dirs:
 
 Executable runtests
   if flag(buildtests)
@@ -81,7 +84,22 @@ Executable runtests
     Extra-Libraries: odbc
   include-dirs: .
   GHC-Options: -O2
-  Extensions: 
+  Extensions:
     ExistentialQuantification,
     ForeignFunctionInterface,
     PatternSignatures
+
+Executable stresstest
+  if flag(buildstresstest)
+    Buildable: True
+    Build-Depends:
+        base
+      , HDBC
+      , HDBC-odbc
+      , random
+      , resource-pool
+  else
+    Buildable: False
+  Main-Is: stresstest.hs
+  Hs-Source-Dirs: stresstest
+  GHC-Options: -threaded -rtsopts
