@@ -49,7 +49,7 @@ finalizeonce *wrapobjodbc(void *obj, finalizeonce *parentobj) {
   newobj->extrainfo = NULL;
   newobj->parent = parentobj;
   if (parentobj != NULL) {
-    __sync_add_and_fetch(&parentobj->refcount, 1);
+    odbc_atomic_increment(&parentobj->refcount);
   }
 #ifdef HDBC_DEBUG
   fprintf(stderr, "\nWrapped %p at %p\n", obj, newobj);
@@ -71,6 +71,8 @@ void sqlFreeHandleSth_app(finalizeonce *res) {
 #endif
   int isFinalized = odbc_sync_val_compare_and_swap(&res->isfinalized, 0, 1);
   if (isFinalized)
+    return;
+  if (!res->encapobj)
     return;
   // Microsoft SQL Server driver might deadlock if calling SQLCloseCursor on a statement that is in the
   // process of fetching data via network. So we cancel it first.
@@ -104,6 +106,9 @@ SQLRETURN sqlFreeHandleDbc_app(finalizeonce *res) {
   int isFinalized = odbc_sync_val_compare_and_swap(&res->isfinalized, 0, 1);
   if (isFinalized)
     return 0;
+  if (!res->encapobj)
+    return SQL_SUCCESS;
+
   retval = SQLDisconnect((SQLHDBC) (res->encapobj));
   if (SQL_SUCCEEDED(retval)) {
     SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
@@ -127,7 +132,7 @@ void dbc_conditional_finalizer(finalizeonce *res, int refcount) {
   /* Don't use sqlFreeHandleDbc_app here, because we want to clear it out
      regardless of the success or failues of SQLDisconnect. */
     int isFinalized = odbc_sync_val_compare_and_swap(&res->isfinalized, 0, 1);
-    if (!isFinalized) {
+    if (!isFinalized && res->encapobj) {
       SQLDisconnect((SQLHDBC) (res->encapobj));
       SQLFreeHandle(SQL_HANDLE_DBC, (SQLHANDLE) (res->encapobj));
       SQLFreeHandle(SQL_HANDLE_ENV, (SQLHANDLE) (res->extrainfo));
