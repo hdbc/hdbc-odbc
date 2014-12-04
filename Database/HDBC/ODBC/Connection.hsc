@@ -8,8 +8,10 @@ import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
 import qualified Database.HDBC.ODBC.ConnectionImpl as Impl
-import Database.HDBC.ODBC.Types
+import Database.HDBC.ODBC.Api.Errors
+import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Statement
+import Database.HDBC.ODBC.Wrappers
 import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal
@@ -50,7 +52,7 @@ This, and all other functions that use ODBC directly or indirectly, can raise
 SqlErrors just like other HDBC backends.  The seErrorMsg field is specified
 as a String in HDBC.  ODBC specifies this data as a list of strings.
 Therefore, this driver uses show on the data from ODBC.  For friendly display,
-or handling of individual component messages in your code, you can use 
+or handling of individual component messages in your code, you can use
 read on the seErrorMsg field in a context that expects @[String]@.
 
 Important note for MySQL users:
@@ -71,44 +73,31 @@ You should ignore this advice if you are using InnoDB tables.
 
 -}
 connectODBC :: String -> IO Impl.Connection
-connectODBC args = B.useAsCStringLen (BUTF8.fromString args) $ \(cs, cslen) -> 
-                   alloca $ \(penvptr::Ptr (Ptr CEnv)) ->
-                   alloca $ \(pdbcptr::Ptr (Ptr CConn)) ->
-         do -- Create the Environment Handle
-            rc1 <- sqlAllocHandle #{const SQL_HANDLE_ENV}
-                                  nullPtr  -- {const SQL_NULL_HANDLE}
-                                   (castPtr penvptr)
-            envptr <- peek penvptr 
+connectODBC args =
+  B.useAsCStringLen (BUTF8.fromString args) $ \(cs, cslen) -> do
+  -- Create the Environment Handle
+  env <- sqlAllocEnv
+  withEnvOrDie env $ \hEnv ->
+    sqlSetEnvAttr hEnv #{const SQL_ATTR_ODBC_VERSION} (getSqlOvOdbc3) 0
 
-            checkError "connectODBC/alloc env" (EnvHandle envptr) rc1
-            sqlSetEnvAttr envptr #{const SQL_ATTR_ODBC_VERSION}
-                             (getSqlOvOdbc3) 0
+  -- Create the DBC handle.
+  dbc <- sqlAllocDbc env
+  -- Now connect.
+  withDbcOrDie dbc $ \hDbc ->
+    sqlDriverConnect hDbc nullPtr cs (fromIntegral cslen)
+                     nullPtr 0 nullPtr #{const SQL_DRIVER_NOPROMPT}
+    >>= checkError "connectODBC/sqlDriverConnect" (DbcHandle hDbc)
 
-            -- Create the DBC handle.
-            sqlAllocHandle #{const SQL_HANDLE_DBC} (castPtr envptr) 
-                               (castPtr pdbcptr)
-                          >>= checkError "connectODBC/alloc dbc"
-                                  (EnvHandle envptr)
-            dbcptr <- peek pdbcptr
-            wrappeddbcptr <- wrapconn dbcptr envptr nullPtr
-            fdbcptr <- newForeignPtr sqlFreeHandleDbc_ptr wrappeddbcptr
-
-            -- Now connect.
-            sqlDriverConnect dbcptr nullPtr cs (fromIntegral cslen)
-                             nullPtr 0 nullPtr
-                             #{const SQL_DRIVER_NOPROMPT}
-                              >>= checkError "connectODBC/sqlDriverConnect" 
-                                  (DbcHandle dbcptr)
-            mkConn args fdbcptr
+  mkConn args dbc
 
 -- FIXME: environment vars may have changed, should use pgsql enquiries
 -- for clone.
-mkConn :: String -> Conn -> IO Impl.Connection
-mkConn args iconn = withConn iconn $ \cconn -> 
+mkConn :: String -> DbcWrapper -> IO Impl.Connection
+mkConn args iconn = withDbcOrDie iconn $ \cconn ->
                     alloca $ \plen ->
                     alloca $ \psqlusmallint ->
-                    allocaBytes 128 $ \pbuf -> 
-    do 
+                    allocaBytes 128 $ \pbuf ->
+    do
        children <- newMVar []
        sqlGetInfo cconn #{const SQL_DBMS_VER} (castPtr pbuf) 127 plen
          >>= checkError "sqlGetInfo SQL_DBMS_VER" (DbcHandle cconn)
@@ -169,40 +158,24 @@ frun conn children query args =
        finish sth
        return res
 
-fcommit iconn = withConn iconn $ \cconn ->
+fcommit iconn = withDbcOrDie iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_COMMIT}
     >>= checkError "sqlEndTran commit" (DbcHandle cconn)
 
-frollback iconn = withConn iconn $ \cconn ->
+frollback iconn = withDbcOrDie iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
     >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
 
-fdisconnect iconn mchildren  = withRawConn iconn $ \rawconn -> 
-                               withConn iconn $ \llconn ->
-    do closeAllChildren mchildren
-       res <- sqlFreeHandleDbc_app rawconn
-       -- FIXME: will this checkError segfault?
-       checkError "disconnect" (DbcHandle $ llconn) res
-
-foreign import #{CALLCONV} safe "sql.h SQLAllocHandle"
-  sqlAllocHandle :: #{type SQLSMALLINT} -> Ptr () -> 
-                    Ptr () -> IO (#{type SQLRETURN})
-
-foreign import ccall safe "hdbc-odbc-helper.h wrapobjodbc_extra"
-  wrapconn :: Ptr CConn -> Ptr CEnv -> Ptr WrappedCConn -> IO (Ptr WrappedCConn)
-
-foreign import ccall safe "hdbc-odbc-helper.h &sqlFreeHandleDbc_finalizer"
-  sqlFreeHandleDbc_ptr :: FunPtr (Ptr WrappedCConn -> IO ())
-
-foreign import ccall safe "hdbc-odbc-helper.h sqlFreeHandleDbc_app"
-  sqlFreeHandleDbc_app :: Ptr WrappedCConn -> IO (#{type SQLRETURN})
+fdisconnect iconn mchildren  = do
+  closeAllChildren mchildren
+  freeDbcIfNotAlready True iconn
 
 foreign import #{CALLCONV} safe "sql.h SQLSetEnvAttr"
-  sqlSetEnvAttr :: Ptr CEnv -> #{type SQLINTEGER} -> 
+  sqlSetEnvAttr :: SQLHENV -> #{type SQLINTEGER} ->
                    Ptr () -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLDriverConnect"
-  sqlDriverConnect :: Ptr CConn -> Ptr () -> CString -> #{type SQLSMALLINT}
+  sqlDriverConnect :: SQLHDBC -> Ptr () -> CString -> #{type SQLSMALLINT}
                    -> CString -> #{type SQLSMALLINT}
                    -> Ptr #{type SQLSMALLINT} -> #{type SQLUSMALLINT}
                    -> IO #{type SQLRETURN}
@@ -211,18 +184,18 @@ foreign import ccall safe "hdbc-odbc-helper.h getSqlOvOdbc3"
   getSqlOvOdbc3 :: Ptr ()
 
 foreign import ccall safe "hdbc-odbc-helper.h SQLSetConnectAttr"
-  sqlSetConnectAttr :: Ptr CConn -> #{type SQLINTEGER} 
+  sqlSetConnectAttr :: SQLHDBC -> #{type SQLINTEGER}
                     -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
                     -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLEndTran"
-  sqlEndTran :: #{type SQLSMALLINT} -> Ptr CConn -> #{type SQLSMALLINT}
+  sqlEndTran :: #{type SQLSMALLINT} -> SQLHDBC -> #{type SQLSMALLINT}
              -> IO #{type SQLRETURN}
 
 foreign import ccall safe "hdbc-odbc-helper.h disableAutoCommit"
-  disableAutoCommit :: Ptr CConn -> IO #{type SQLRETURN}
+  disableAutoCommit :: SQLHDBC -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLGetInfo"
-  sqlGetInfo :: Ptr CConn -> #{type SQLUSMALLINT} -> Ptr () ->
+  sqlGetInfo :: SQLHDBC -> #{type SQLUSMALLINT} -> Ptr () ->
                 #{type SQLSMALLINT} -> Ptr #{type SQLSMALLINT} ->
                 IO #{type SQLRETURN}

@@ -13,9 +13,13 @@ module Database.HDBC.ODBC.Statement (
 import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
-import Database.HDBC.ODBC.Types
+import Database.HDBC.ODBC.Api.Errors
+import Database.HDBC.ODBC.Api.Imports
+import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Utils
+import Database.HDBC.ODBC.Log
 import Database.HDBC.ODBC.TypeConv
+import Database.HDBC.ODBC.Wrappers
 
 import Foreign.C.String (castCUCharToChar)
 import Foreign.C.Types
@@ -40,9 +44,7 @@ import Unsafe.Coerce (unsafeCoerce)
 import System.IO (hPutStrLn, stderr)
 import Debug.Trace
 
-l :: String -> IO ()
-l _ = return ()
--- l m = hPutStrLn stderr ("\n" ++ m)
+import qualified Data.Foldable as F
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -56,60 +58,47 @@ l _ = return ()
 #let CALLCONV = "ccall"
 #endif
 
-fGetQueryInfo :: Conn -> ChildList -> String
+fGetQueryInfo :: DbcWrapper -> ChildList -> String
               -> IO ([SqlColDesc], [(String, SqlColDesc)])
 fGetQueryInfo iconn children query =
-    do l "in fGetQueryInfo"
+    do hdbcTrace "in fGetQueryInfo"
        sstate <- newSState iconn query
        addChild children (wrapStmt sstate)   -- We get error if we forget this one. Not sure why.
        fakeExecute' sstate
 
 fakeExecute' :: SState -> IO ([SqlColDesc], [(String, SqlColDesc)])
-fakeExecute' sstate  = withConn (dbo sstate) $ \cconn ->
-                       withCStringLen (squery sstate) $ \(cquery, cqlen) ->
-                       alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l "in fexecute"
-       -- public_ffinish sstate  
-       rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
-       sthptr <- peek psthptr
-       wrappedsthptr <- withRawConn (dbo sstate)
-                        (\rawconn -> wrapstmt sthptr rawconn)
-       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError "execute allocHandle" (DbcHandle cconn) rc1
+fakeExecute' sstate =
+  withStmtOrDie (sstmt sstate) $ \hStmt ->
+  withCStringLen (squery sstate) $ \(cquery, cqlen) -> do
+    hdbcTrace "in fexecute"
+    sqlPrepare hStmt cquery (fromIntegral cqlen) >>=
+      checkError "execute prepare" (StmtHandle hStmt)
 
-       sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
-            checkError "execute prepare" (StmtHandle sthptr)
+    -- parmCount <- getNumParams sthptr
+    parmInfo <- fgetparminfo hStmt
 
-       -- parmCount <- getNumParams sthptr
-       parmInfo <- fgetparminfo sthptr
-       
-       -- rc <- getNumResultCols sthptr
-       colInfo <- fgetcolinfo sthptr
-       return (parmInfo, colInfo)
+    -- rc <- getNumResultCols sthptr
+    colInfo <- fgetcolinfo hStmt
+    return (parmInfo, colInfo)
 
 -- | The Stament State
 data SState = SState
-  { stomv      :: MVar (Maybe Stmt)
-  , dbo        :: Conn
-  , squery     :: String
-  , colinfomv  :: MVar [(String, SqlColDesc)]
-  , bindColsMV :: MVar (Maybe [(BindCol, Ptr #{type SQLLEN})])
+  { sstmt        :: StmtWrapper
+  , squery       :: String
+  , stmtPrepared :: MVar Bool
+  , colinfomv    :: MVar [(String, SqlColDesc)]
+  , bindColsMV   :: MVar (Maybe [(BindCol, Ptr #{type SQLLEN})])
   }
 
 -- FIXME: we currently do no prepare optimization whatsoever.
 
-newSState :: Conn -> String -> IO SState
-newSState indbo query =
-    do newstomv     <- newMVar Nothing
-       newcolinfomv <- newMVar []
-       newBindCols  <- newMVar Nothing
-       return SState
-         { stomv      = newstomv
-         , dbo        = indbo
-         , squery     = query
-         , colinfomv  = newcolinfomv
-         , bindColsMV = newBindCols
-         }
+newSState :: DbcWrapper -> String -> IO SState
+newSState indbo query = SState
+  <$> sqlAllocStmt indbo
+  <*> pure query
+  <*> newMVar False
+  <*> newMVar []
+  <*> newMVar Nothing
 
 wrapStmt :: SState -> Statement
 wrapStmt sstate = Statement
@@ -123,115 +112,79 @@ wrapStmt sstate = Statement
   , describeResult = readMVar (colinfomv sstate)
   }
 
-newSth :: Conn -> ChildList -> String -> IO Statement
+newSth :: DbcWrapper -> ChildList -> String -> IO Statement
 newSth indbo mchildren query =
-    do l "in newSth"
+    do hdbcTrace "in newSth"
        sstate <- newSState indbo query
        let retval = wrapStmt sstate
        addChild mchildren retval
        return retval
 
-makesth :: Conn -> [Char] -> IO (ForeignPtr WrappedCStmt)
-makesth iconn name = alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-                     withConn iconn $ \cconn -> 
-                     withCString "" $ \emptycs ->
-    do rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
-       sthptr <- peek psthptr
-       wrappedsthptr <- withRawConn iconn
-                        (\rawconn -> wrapstmt sthptr rawconn)
-       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError (name ++ " allocHandle") (DbcHandle cconn) rc1
-       return fsthptr
+fgettables :: DbcWrapper -> IO [String]
+fgettables iconn = do
+  sstate <- newSState iconn ""
+  withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    simpleSqlTables hStmt >>= checkError "gettables simpleSqlTables" (StmtHandle hStmt)
+    fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+  results <- fetchAllRows' $ wrapStmt sstate
+  return $ map (\x -> fromSql (x !! 2)) results
 
-wrapTheStmt :: Conn -> Stmt -> IO (Statement, SState)
-wrapTheStmt iconn fsthptr =
-    do sstate <- newSState iconn ""
-       sstate <- newSState iconn ""
-       swapMVar (stomv sstate) (Just fsthptr)
-       let sth = wrapStmt sstate
-       return (sth, sstate)
-
-fgettables :: Conn -> IO [String]
-fgettables iconn =
-    do fsthptr <- makesth iconn "fgettables"
-       l "fgettables: after makesth"
-       withStmt fsthptr (\sthptr ->
-                             simpleSqlTables sthptr >>=
-                                checkError "gettables simpleSqlTables" 
-                                               (StmtHandle sthptr)
-                        )
-       l "fgettables: after withStmt"
-       (sth, sstate) <- wrapTheStmt iconn fsthptr
-       withStmt fsthptr (\sthptr -> fgetcolinfo sthptr >>= swapMVar (colinfomv sstate))
-       l "fgettables: after wrapTheStmt"
-       results <- fetchAllRows' sth
-       l ("fgettables: results: " ++ (show results))
-       return $ map (\x -> fromSql (x !! 2)) results
-
-fdescribetable :: Conn -> String -> IO [(String, SqlColDesc)]
-fdescribetable iconn tablename = B.useAsCStringLen (BUTF8.fromString tablename) $ 
-                                 \(cs, csl) ->
-    do fsthptr <- makesth iconn "fdescribetable"
-       withStmt fsthptr (\sthptr ->
-                             simpleSqlColumns sthptr cs (fromIntegral csl) >>=
-                               checkError "fdescribetable simpleSqlColumns"
-                                          (StmtHandle sthptr)
-                        )
-       (sth, sstate) <- wrapTheStmt iconn fsthptr
-       withStmt fsthptr (\sthptr -> fgetcolinfo sthptr >>= swapMVar (colinfomv sstate))
-       results <- fetchAllRows' sth
-       l (show results)
-       return $ map fromOTypeCol results
+fdescribetable :: DbcWrapper -> String -> IO [(String, SqlColDesc)]
+fdescribetable iconn tablename =
+  B.useAsCStringLen (BUTF8.fromString tablename) $ \(cs, csl) -> do
+    sstate <- newSState iconn tablename
+    withStmtOrDie (sstmt sstate) $ \hStmt -> do
+      simpleSqlColumns hStmt cs (fromIntegral csl) >>= checkError "fdescribetable simpleSqlColumns" (StmtHandle hStmt)
+      fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+    results <- fetchAllRows' $ wrapStmt sstate
+    hdbcTrace $ show results
+    return $ map fromOTypeCol results
 
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
 fexecute :: SState -> [SqlValue] -> IO Integer
 fexecute sstate args =
-  withConn (dbo sstate) $ \cconn ->
-  B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) ->
-  alloca $ \(psthptr::Ptr (Ptr CStmt)) ->
-    do l $ "in fexecute: " ++ show (squery sstate) ++ show args
-       public_ffinish sstate
-       rc1 <- sqlAllocStmtHandle #{const SQL_HANDLE_STMT} cconn psthptr
-       sthptr <- peek psthptr
-       wrappedsthptr <- withRawConn (dbo sstate)
-                        (\rawconn -> wrapstmt sthptr rawconn)
-       fsthptr <- newForeignPtr sqlFreeHandleSth_ptr wrappedsthptr
-       checkError "execute allocHandle" (DbcHandle cconn) rc1
+  withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    hdbcTrace $ "in fexecute: " ++ show (squery sstate) ++ show args
+    -- Realloc the statement
+    modifyMVar_ (stmtPrepared sstate) $ \prep -> do
+      if prep
+        then do
+          c_sqlFreeStmt hStmt sQL_CLOSE >>= checkError "fexecute c_sqlFreeStmt sQL_CLOSE" (StmtHandle hStmt)
+          c_sqlFreeStmt hStmt sQL_UNBIND >>= checkError "fexecute c_sqlFreeStmt sQL_UNBIND" (StmtHandle hStmt)
+          c_sqlFreeStmt hStmt sQL_RESET_PARAMS >>= checkError "fexecute c_sqlFreeStmt sQL_RESET_PARAMS" (StmtHandle hStmt)
+          freeBoundCols sstate
+        else
+          B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) -> do
+            sqlPrepare hStmt cquery (fromIntegral cqlen) >>= checkError "execute prepare" (StmtHandle hStmt)
+      return True -- Statement is always prepared after this block completes.
 
-       sqlPrepare sthptr cquery (fromIntegral cqlen) >>= 
-            checkError "execute prepare" (StmtHandle sthptr)
+    bindArgs <- zipWithM (bindParam hStmt) args [1..]
+    hdbcTrace $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
+    r <- sqlExecute hStmt
+    mapM_ (\(x, y) -> free x >> free y) (catMaybes bindArgs)
 
-       bindArgs <- zipWithM (bindParam sthptr) args [1..]
-       l $ "Ready for sqlExecute: " ++ show (squery sstate) ++ show args
-       r <- sqlExecute sthptr
-       mapM_ (\(x, y) -> free x >> free y) (catMaybes bindArgs)
+    case r of
+      #{const SQL_NO_DATA} -> return () -- Update that did nothing
+      x -> checkError "execute execute" (StmtHandle hStmt) x
 
-       case r of
-         #{const SQL_NO_DATA} -> return () -- Update that did nothing
-         x -> checkError "execute execute" (StmtHandle sthptr) x
+    rc <- getNumResultCols hStmt
 
-       rc <- getNumResultCols sthptr
+    case rc of
+      0 -> do rowcount <- getSqlRowCount hStmt
+              public_ffinish sstate
+              return (fromIntegral rowcount)
+      colcount -> do fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+                     return 0
 
-       case rc of
-         0 -> do rowcount <- getSqlRowCount sthptr
-                 ffinish fsthptr
-                 swapMVar (colinfomv sstate) []
-                 touchForeignPtr fsthptr
-                 return (fromIntegral rowcount)
-         colcount -> do fgetcolinfo sthptr >>= swapMVar (colinfomv sstate)
-                        swapMVar (stomv sstate) (Just fsthptr)
-                        touchForeignPtr fsthptr
-                        return 0
-
-getNumResultCols :: Ptr CStmt -> IO #{type SQLSMALLINT}
+getNumResultCols :: SQLHSTMT -> IO #{type SQLSMALLINT}
 getNumResultCols sthptr = alloca $ \pcount ->
-    do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols" 
+    do sqlNumResultCols sthptr pcount >>= checkError "SQLNumResultCols"
                                           (StmtHandle sthptr)
        peek pcount
 
 -- Bind a parameter column before execution.
-bindParam :: Ptr CStmt -> SqlValue -> Word16
+bindParam :: SQLHSTMT -> SqlValue -> Word16
         -> IO (Maybe (Ptr #{type SQLLEN}, Ptr CChar))
 bindParam sthptr arg icol =  alloca $ \pdtype ->
                            alloca $ \pcolsize ->
@@ -247,19 +200,19 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
    So, make sure we either free of have foreignized everything before
    control passes out of this function. -}
 
-    do l $ "Binding col " ++ show icol ++ ": " ++ show arg
+    do hdbcTrace $ "Binding col " ++ show icol ++ ": " ++ show arg
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits pnullable
-       l $ "rc1 is " ++ show (isOK rc1)
+       hdbcTrace $ "rc1 is " ++ show (isOK rc1)
        coltype <- if isOK rc1 then Just <$> peek pdtype else return Nothing
        colsize <- if isOK rc1 then Just <$> peek pcolsize else return Nothing
        decdigits <- if isOK rc1 then Just <$> peek pdecdigits else return Nothing
-       l $ "Results: " ++ show (coltype, colsize, decdigits)
+       hdbcTrace $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
-                    do l "Binding null"
+                    do hdbcTrace "Binding null"
                        rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                               #{const SQL_PARAM_INPUT}
-                              #{const SQL_C_CHAR} 
+                              #{const SQL_C_CHAR}
                               (fromMaybe #{const SQL_CHAR} coltype)
                               (fromMaybe 0 colsize)
                               (fromMaybe 0 decdigits)
@@ -270,16 +223,16 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
          x -> do -- Otherwise, we have to allocate RAM, make sure it's
                  -- not freed now, and pass it along...
                   boundValue <- bindSqlValue x
-                  do pcslen <- malloc 
+                  do pcslen <- malloc
                      poke pcslen . fromIntegral $ bvBufferSize boundValue
                      rc2 <- sqlBindParameter sthptr (fromIntegral icol)
                        #{const SQL_PARAM_INPUT}
-                       (bvValueType boundValue) 
+                       (bvValueType boundValue)
                        (fromMaybe (bvDefaultColumnType boundValue) coltype)
-                       (fromMaybe (bvDefaultColumnSize boundValue) colsize) 
+                       (fromMaybe (bvDefaultColumnSize boundValue) colsize)
                        (fromMaybe (bvDefaultDecDigits boundValue) decdigits)
                        (castPtr $ bvBuffer boundValue)
-                       (bvBufferSize boundValue) 
+                       (bvBufferSize boundValue)
                        pcslen
                      if isOK rc2
                         then do -- We bound it.  Make foreignPtrs and return.
@@ -288,11 +241,11 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
                                 -- error.
                                 free pcslen
                                 free (bvBuffer boundValue)
-                                checkError ("bindparameter " ++ show icol) 
+                                checkError ("bindparameter " ++ show icol)
                                                (StmtHandle sthptr) rc2
                                 return Nothing -- will never get hit
 
-getSqlRowCount :: Ptr CStmt -> IO Int32
+getSqlRowCount :: SQLHSTMT -> IO Int32
 getSqlRowCount cstmt = alloca $ \prows ->
      do sqlRowCount cstmt prows >>= checkError "SQLRowCount" (StmtHandle cstmt)
         peek prows
@@ -310,13 +263,13 @@ data BoundValue = BoundValue
   } deriving (Show)
 
 -- | Marshals given SqlValue returning intended ValueType, default ColumnType,
--- and a CStringLen with a buffer containing bound value. Pointer in the CStringLen 
+-- and a CStringLen with a buffer containing bound value. Pointer in the CStringLen
 -- structure must be freed by caller
 bindSqlValue :: SqlValue -> IO BoundValue
 bindSqlValue sqlValue = case sqlValue of
   SqlString s -> do
     (wstrPtr, wstrLen) <- newCWStringLen s
-    let result = BoundValue 
+    let result = BoundValue
           { bvValueType         = #{const SQL_C_WCHAR}
           , bvDefaultColumnType = #{const SQL_WCHAR}
           , bvDefaultColumnSize = fromIntegral wstrLen
@@ -324,7 +277,7 @@ bindSqlValue sqlValue = case sqlValue of
           , bvBuffer            = castPtr wstrPtr
           , bvBufferSize        = fromIntegral $ wstrLen * #{size wchar_t}
           }
-    l $ "bind SqlString " ++ s ++ ": " ++ show result
+    hdbcTrace $ "bind SqlString " ++ s ++ ": " ++ show result
     return result
   SqlByteString bs -> B.unsafeUseAsCStringLen bs $ \(s,len) -> do
     res <- mallocBytes len
@@ -337,46 +290,46 @@ bindSqlValue sqlValue = case sqlValue of
           , bvBuffer            = castPtr res
           , bvBufferSize        = fromIntegral len
           }
-    l $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
+    hdbcTrace $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
     return result
   -- | This is rather hacky, I just replicate the behaviour of a previous version
   x -> do
-    l $ "bind other " ++ show x
+    hdbcTrace $ "bind other " ++ show x
     bsResult <- bindSqlValue $ SqlByteString (fromSql x)
     let result = bsResult
           { bvValueType         = #{const SQL_C_CHAR}
           , bvDefaultColumnType = #{const SQL_CHAR}
           }
-    l $ "bound other " ++ show x ++ ": " ++ show result
+    hdbcTrace $ "bound other " ++ show x ++ ": " ++ show result
     return result
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow sstate = modifyMVar (stomv sstate) $ \stmt -> do
-  l $ "ffetchrow"
-  case stmt of
+ffetchrow sstate = withMaybeStmt (sstmt sstate) $ \maybeStmt ->
+  case maybeStmt of
     Nothing -> do
-      l "ffetchrow: no statement"
-      return (stmt, Nothing)
-    Just cmstmt -> withStmt cmstmt $ \cstmt -> do
-      bindCols <- getBindCols sstate cstmt
-      l "ffetchrow: fetching"
-      rc <- sqlFetch cstmt
+      hdbcTrace "ffetchrow: no statement"
+      return Nothing
+    Just hStmt -> do
+      hdbcTrace "ffetchrow"
+      bindCols <- getBindCols sstate hStmt
+      hdbcTrace "ffetchrow: fetching"
+      rc <- sqlFetch hStmt
       if rc == #{const SQL_NO_DATA}
         then do
-          l "ffetchrow: no more rows"
-          ffinish cmstmt
-          return (Nothing, Nothing)
+          hdbcTrace "ffetchrow: no more rows"
+          public_ffinish sstate
+          return Nothing
         else do
-          l "ffetchrow: fetching data"
-          checkError "sqlFetch" (StmtHandle cstmt) rc
+          hdbcTrace "ffetchrow: fetching data"
+          checkError "sqlFetch" (StmtHandle hStmt) rc
           sqlValues <- if rc == #{const SQL_SUCCESS} || rc == #{const SQL_SUCCESS_WITH_INFO}
-            then mapM (bindColToSqlValue cstmt) bindCols
-            else raiseError "sqlGetData" rc (StmtHandle cstmt)
-          return (stmt, Just sqlValues)
+            then mapM (bindColToSqlValue hStmt) bindCols
+            else raiseError "sqlGetData" rc (StmtHandle hStmt)
+          return $ Just sqlValues
 
-getBindCols :: SState -> Ptr CStmt -> IO [(BindCol, Ptr #{type SQLLEN})]
+getBindCols :: SState -> SQLHSTMT -> IO [(BindCol, Ptr #{type SQLLEN})]
 getBindCols sstate cstmt = do
-  l "getBindCols"
+  hdbcTrace "getBindCols"
   modifyMVar (bindColsMV sstate) $ \mBindCols ->
     case mBindCols of
       Nothing -> do
@@ -389,15 +342,15 @@ getBindCols sstate cstmt = do
 -- This is only for String data. For binary fix should be very easy. Just check the column type and use buflen instead of buflen - 1
 getLongColData cstmt bindCol = do
    let (BindColString buf bufLen col) = bindCol
-   l $ "buflen: " ++ show bufLen
+   hdbcTrace $ "buflen: " ++ show bufLen
    bs <- B.packCStringLen (buf, fromIntegral (bufLen - 1))
-   l $ "sql_no_total col " ++ show (BUTF8.toString bs)
+   hdbcTrace $ "sql_no_total col " ++ show (BUTF8.toString bs)
    bs2 <- getRestLongColData cstmt #{const SQL_CHAR} col bs
    return $ SqlByteString bs2
 
 
 getRestLongColData cstmt cBinding icol acc = do
-  l "getLongColData"
+  hdbcTrace "getLongColData"
   alloca $ \plen ->
    allocaBytes colBufSizeMaximum $ \buf ->
      do res <- sqlGetData cstmt (fromIntegral icol) cBinding
@@ -410,7 +363,7 @@ getRestLongColData cstmt cBinding icol acc = do
                    else do
                         let bufmax = fromIntegral $ colBufSizeMaximum - 1
                         bs <- B.packCStringLen (buf, fromIntegral (if len == #{const SQL_NO_TOTAL} || len > bufmax then bufmax else len))
-                        l $ "sql_no_total col is: " ++ show (BUTF8.toString bs)
+                        hdbcTrace $ "sql_no_total col is: " ++ show (BUTF8.toString bs)
                         let newacc = B.append acc bs
                         if len /= #{const SQL_NO_TOTAL} && len <= bufmax
                            then return newacc
@@ -431,7 +384,7 @@ getColData cstmt cBinding icol = do
                    #{const SQL_NULL_DATA} -> return SqlNull
                    #{const SQL_NO_TOTAL} -> fail $ "Unexpected SQL_NO_TOTAL"
                    _ -> do bs <- B.packCStringLen (buf, fromIntegral len)
-                           l $ "col is: " ++ show (BUTF8.toString bs)
+                           hdbcTrace $ "col is: " ++ show (BUTF8.toString bs)
                            return (SqlByteString bs)
           #{const SQL_SUCCESS_WITH_INFO} ->
               do len <- peek plen
@@ -445,20 +398,18 @@ getColData cstmt cBinding icol = do
                                        _ -> colBufSizeDefault - 1 -- strip off NUL
                       bs <- liftM2 (B.append) (B.packCStringLen (buf, firstbuf))
                             (B.packCStringLen (buf2, fromIntegral len2))
-                      l $ "col is: " ++ (BUTF8.toString bs)
+                      hdbcTrace $ "col is: " ++ (BUTF8.toString bs)
                       return (SqlByteString bs)
           _ -> raiseError "sqlGetData" res (StmtHandle cstmt)
 
 -- | ffetchrowBaseline is used for benchmarking fetches without the
 -- overhead of marshalling values.
-ffetchrowBaseline sstate = do
-  Just cmstmt <- readMVar (stomv sstate)
-  withStmt cmstmt $ \cstmt -> do
-    rc <- sqlFetch cstmt
-    if rc == #{const SQL_NO_DATA}
-      then do ffinish cmstmt
-              return Nothing
-      else do return (Just [])
+ffetchrowBaseline sstate = withStmtOrDie (sstmt sstate) $ \hStmt -> do
+  rc <- sqlFetch hStmt
+  if rc == #{const SQL_NO_DATA}
+    then do public_ffinish sstate
+            return Nothing
+    else do return (Just [])
 
 data ColBuf
 
@@ -488,14 +439,14 @@ data BindCol
 --  | BindColInterval
 --      typedef struct tagSQL_INTERVAL_STRUCT
 --      {
---         SQLINTERVAL interval_type; 
+--         SQLINTERVAL interval_type;
 --         SQLSMALLINT interval_sign;
 --         union {
 --               SQL_YEAR_MONTH_STRUCT   year_month;
 --               SQL_DAY_SECOND_STRUCT   day_second;
 --               } intval;
 --      } SQL_INTERVAL_STRUCT;
---      typedef enum 
+--      typedef enum
 --      {
 --         SQL_IS_YEAR = 1,
 --         SQL_IS_MONTH = 2,
@@ -511,13 +462,13 @@ data BindCol
 --         SQL_IS_HOUR_TO_SECOND = 12,
 --         SQL_IS_MINUTE_TO_SECOND = 13
 --      } SQLINTERVAL;
---      
+--
 --      typedef struct tagSQL_YEAR_MONTH
 --      {
 --         SQLUINTEGER year;
---         SQLUINTEGER month; 
+--         SQLUINTEGER month;
 --      } SQL_YEAR_MONTH_STRUCT;
---      
+--
 --      typedef struct tagSQL_DAY_SECOND
 --      {
 --         SQLUINTEGER day;
@@ -605,7 +556,7 @@ instance Storable StructTimestamp where
 --   #{type WORD}      -- ^ Data2
 --   #{type WORD}      -- ^ Data3
 --   [#{type BYTE}]    -- ^ Data4[8]
--- 
+--
 -- instance Storable StructGUID where
 --   sizeOf _ = #{size SQLGUID}
 --   alignment _ = alignment (undefined :: CLong)
@@ -646,9 +597,9 @@ instance Storable StructTimestamp where
 --     http://msdn.microsoft.com/en-us/library/ms710118(v=vs.85).aspx
 -- This implementation makes use of Column-Wise binding. Further improvements
 -- might be had by using Row-Wise binding.
-mkBindCol :: SState -> Ptr CStmt -> #{type SQLSMALLINT} -> IO (BindCol, Ptr #{type SQLLEN})
+mkBindCol :: SState -> SQLHSTMT -> #{type SQLSMALLINT} -> IO (BindCol, Ptr #{type SQLLEN})
 mkBindCol sstate cstmt col = do
-  l "mkBindCol"
+  hdbcTrace "mkBindCol"
   colInfo <- readMVar (colinfomv sstate)
   let colDesc = (snd (colInfo !! ((fromIntegral col) -1)))
   case colType colDesc of
@@ -693,7 +644,7 @@ wcSize = 2
 
 -- The functions that follow do the marshalling from C into a Haskell type
 mkBindColString cstmt col mColSize = do
-  l "mkBindCol: BindColString"
+  hdbcTrace "mkBindCol: BindColString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
@@ -702,7 +653,7 @@ mkBindColString cstmt col mColSize = do
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
 mkBindColStringEC cstmt col = mkBindColString cstmt col . fmap (* utf8EncodingMaximum)
 mkBindColWString cstmt col mColSize = do
-  l "mkBindCol: BindColWString"
+  hdbcTrace "mkBindCol: BindColWString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
   buf     <- mallocBytes bufLen
@@ -712,56 +663,56 @@ mkBindColWString cstmt col mColSize = do
 mkBindColWStringEC cstmt col = mkBindColString cstmt col . fmap extendFactor  where
   extendFactor sz = sz * ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)
 mkBindColBit cstmt col mColSize = do
-  l "mkBindCol: BindColBit"
+  hdbcTrace "mkBindCol: BindColBit"
   let bufLen  = sizeOf (undefined :: CChar)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColTinyInt cstmt col mColSize = do
-  l "mkBindCol: BindColTinyInt"
+  hdbcTrace "mkBindCol: BindColTinyInt"
   let bufLen  = sizeOf (undefined :: CUChar)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 mkBindColShort cstmt col mColSize = do
-  l "mkBindCol: BindColShort"
+  hdbcTrace "mkBindCol: BindColShort"
   let bufLen  = sizeOf (undefined :: CShort)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 mkBindColLong cstmt col mColSize = do
-  l "mkBindCol: BindColSize"
+  hdbcTrace "mkBindCol: BindColSize"
   let bufLen  = sizeOf (undefined :: CLong)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 mkBindColBigInt cstmt col mColSize = do
-  l "mkBindCol: BindColBigInt"
+  hdbcTrace "mkBindCol: BindColBigInt"
   let bufLen  = sizeOf (undefined :: CInt)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 mkBindColFloat cstmt col mColSize = do
-  l "mkBindCol: BindColFloat"
+  hdbcTrace "mkBindCol: BindColFloat"
   let bufLen  = sizeOf (undefined :: CFloat)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColFloat buf, pStrLen)
 mkBindColDouble cstmt col mColSize = do
-  l "mkBindCol: BindColDouble"
+  hdbcTrace "mkBindCol: BindColDouble"
   let bufLen  = sizeOf (undefined :: CDouble)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDouble buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
-  l "mkBindCol: BindColBinary"
+  hdbcTrace "mkBindCol: BindColBinary"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   let bufLen  = sizeOf (undefined :: CUChar) * (colSize + 1)
   buf     <- mallocBytes bufLen
@@ -769,28 +720,28 @@ mkBindColBinary cstmt col mColSize = do
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBinary buf (fromIntegral bufLen) col, pStrLen)
 mkBindColDate cstmt col mColSize = do
-  l "mkBindCol: BindColDate"
+  hdbcTrace "mkBindCol: BindColDate"
   let bufLen = sizeOf (undefined :: StructDate)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDate buf, pStrLen)
 mkBindColTime cstmt col mColSize = do
-  l "mkBindCol: BindColTime"
+  hdbcTrace "mkBindCol: BindColTime"
   let bufLen = sizeOf (undefined :: StructTime)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTime buf, pStrLen)
 mkBindColTimestamp cstmt col mColSize = do
-  l "mkBindCol: BindColTimestamp"
+  hdbcTrace "mkBindCol: BindColTimestamp"
   let bufLen = sizeOf (undefined :: StructTimestamp)
   buf     <- malloc
   pStrLen <- malloc
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTimestamp buf, pStrLen)
 mkBindColGetData col = do
-  l "mkBindCol: BindColGetData"
+  hdbcTrace "mkBindCol: BindColGetData"
   return (BindColGetData col, nullPtr)
 
 freeBindCol :: BindCol -> IO ()
@@ -815,80 +766,80 @@ freeBindCol (BindColGetData  _ )   = return ()
 -- Also note that the strLen value of SQL_NTS denotes a null terminated string,
 -- but is only valid as input, so we don't make use of it here:
 --     http://msdn.microsoft.com/en-us/library/ms713532(v=VS.85).aspx
-bindColToSqlValue :: Ptr CStmt -> (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
+bindColToSqlValue :: SQLHSTMT -> (BindCol, Ptr #{type SQLLEN}) -> IO SqlValue
 bindColToSqlValue pcstmt (BindColGetData col, _) = do
-  l "bindColToSqlValue: BindColGetData"
+  hdbcTrace "bindColToSqlValue: BindColGetData"
   getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue pcstmt (bindCol, pStrLen) = do
-  l "bindColToSqlValue"
+  hdbcTrace "bindColToSqlValue"
   strLen <- peek pStrLen
   case strLen of
     #{const SQL_NULL_DATA} -> return SqlNull
-    #{const SQL_NO_TOTAL}  -> getLongColData pcstmt bindCol    
+    #{const SQL_NO_TOTAL}  -> getLongColData pcstmt bindCol
     _                      -> bindColToSqlValue' pcstmt bindCol strLen
 
 -- | This is a worker function for `bindcolToSqlValue`. Note that the case
 -- where the data is null should already be handled by this stage.
-bindColToSqlValue' :: Ptr CStmt -> BindCol -> #{type SQLLEN} -> IO SqlValue
+bindColToSqlValue' :: SQLHSTMT -> BindCol -> #{type SQLLEN} -> IO SqlValue
 bindColToSqlValue' pcstmt (BindColString buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (buf, fromIntegral strLen)
-      l $ "bindColToSqlValue BindColString " ++ show bs ++ " " ++ show strLen
+      hdbcTrace $ "bindColToSqlValue BindColString " ++ show bs ++ " " ++ show strLen
       return $ SqlByteString bs
   | otherwise = getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue' pcstmt (BindColWString buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
-      l $ "bindColToSqlValue BindColWString " ++ show bs ++ " " ++ show strLen
+      hdbcTrace $ "bindColToSqlValue BindColWString " ++ show bs ++ " " ++ show strLen
       return $ SqlByteString bs
   | otherwise = getColData pcstmt #{const SQL_CHAR} col
 bindColToSqlValue' _ (BindColBit     buf) strLen = do
   bit <- peek buf
-  l $ "bindColToSqlValue BindColBit " ++ show bit
+  hdbcTrace $ "bindColToSqlValue BindColBit " ++ show bit
   return $ SqlChar (castCUCharToChar bit)
 bindColToSqlValue' _ (BindColTinyInt buf) strLen = do
   tinyInt <- peek buf
-  l $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
+  hdbcTrace $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
   return $ SqlChar (castCCharToChar tinyInt)
 bindColToSqlValue' _ (BindColShort   buf) strLen = do
   short <- peek buf
-  l $ "bindColToSqlValue BindColShort" ++ show short
+  hdbcTrace $ "bindColToSqlValue BindColShort" ++ show short
   return $ SqlInt32 (fromIntegral short)
 bindColToSqlValue' _ (BindColLong    buf) strLen = do
   long <- peek buf
-  l $ "bindColToSqlValue BindColLong " ++ show long
+  hdbcTrace $ "bindColToSqlValue BindColLong " ++ show long
   return $ SqlInt32 (fromIntegral long)
 bindColToSqlValue' _ (BindColBigInt  buf) strLen = do
   bigInt <- peek buf
-  l $ "bindColToSqlValue BindColBigInt " ++ show bigInt
+  hdbcTrace $ "bindColToSqlValue BindColBigInt " ++ show bigInt
   return $ SqlInt64 (fromIntegral bigInt)
 bindColToSqlValue' _ (BindColFloat   buf) strLen = do
   float <- peek buf
-  l $ "bindColToSqlValue BindColFloat " ++ show float
+  hdbcTrace $ "bindColToSqlValue BindColFloat " ++ show float
   return $ SqlDouble (realToFrac float)
 bindColToSqlValue' _ (BindColDouble  buf) strLen = do
   double <- peek buf
-  l $ "bindColToSqlValue BindColDouble " ++ show double
+  hdbcTrace $ "bindColToSqlValue BindColDouble " ++ show double
   return $ SqlDouble (realToFrac double)
 bindColToSqlValue' pcstmt (BindColBinary  buf bufLen col) strLen
   | bufLen >= strLen = do
       bs <- B.packCStringLen (castPtr buf, fromIntegral strLen)
-      l $ "bindColToSqlValue BindColBinary " ++ show bs
+      hdbcTrace $ "bindColToSqlValue BindColBinary " ++ show bs
       return $ SqlByteString bs
   | otherwise = getColData pcstmt (#{const SQL_C_BINARY}) col
 bindColToSqlValue' _ (BindColDate buf) strLen = do
   StructDate year month day <- peek buf
-  l $ "bindColToSqlValue BindColDate"
+  hdbcTrace $ "bindColToSqlValue BindColDate"
   return $ SqlLocalDate $ fromGregorian
     (fromIntegral year) (fromIntegral month) (fromIntegral day)
 bindColToSqlValue' _ (BindColTime buf) strLen = do
   StructTime hour minute second <- peek buf
-  l $ "bindColToSqlValue BindColTime"
+  hdbcTrace $ "bindColToSqlValue BindColTime"
   return $ SqlLocalTimeOfDay $ TimeOfDay
     (fromIntegral hour) (fromIntegral minute) (fromIntegral second)
 bindColToSqlValue' _ (BindColTimestamp buf) strLen = do
   StructTimestamp year month day hour minute second nanosecond <- peek buf
-  l $ "bindColToSqlValue BindColTimestamp"
+  hdbcTrace $ "bindColToSqlValue BindColTimestamp"
   return $ SqlLocalTime $ LocalTime
     (fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day))
     (TimeOfDay (fromIntegral hour) (fromIntegral minute)
@@ -896,7 +847,7 @@ bindColToSqlValue' _ (BindColTimestamp buf) strLen = do
 bindColToSqlValue' _ (BindColGetData _) _ =
   error "bindColToSqlValue': unexpected BindColGetData!"
 
-fgetcolinfo :: Ptr CStmt -> IO [(String, SqlColDesc)]
+fgetcolinfo :: SQLHSTMT -> IO [(String, SqlColDesc)]
 fgetcolinfo cstmt =
     do ncols <- getNumResultCols cstmt
        mapM getname [1..ncols]
@@ -905,7 +856,7 @@ fgetcolinfo cstmt =
                          alloca $ \datatypeptr ->
                          alloca $ \colsizeptr ->
                          alloca $ \nullableptr ->
-              do sqlDescribeCol cstmt icol cscolname 127 colnamelp 
+              do sqlDescribeCol cstmt icol cscolname 127 colnamelp
                                 datatypeptr colsizeptr nullPtr nullableptr
                  colnamelen <- peek colnamelp
                  colnamebs <- B.packCStringLen (cscolname, fromIntegral colnamelen)
@@ -923,27 +874,25 @@ fexecutemany sstate arglist =
 -- Finish and change state
 public_ffinish :: SState -> IO ()
 public_ffinish sstate = do
-  l "public_ffinish"
-  modifyMVar_ (stomv sstate) freeMStmt
-  modifyMVar_ (bindColsMV sstate) freeBindCols
- where
-  freeMStmt Nothing    = return Nothing
-  freeMStmt (Just sth) = ffinish sth >> return Nothing
-  freeBindCols Nothing = return Nothing
-  freeBindCols (Just bindCols) = do
-    l "public_ffinish: freeing bindcols"
-    mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
+  hdbcTrace "public_ffinish"
+  ffinish $ sstmt sstate
+  freeBoundCols sstate
+
+freeBoundCols :: SState -> IO ()
+freeBoundCols sstate = modifyMVar_ (bindColsMV sstate) $ \maybeBindCols -> do
+    F.mapM_ go maybeBindCols
     return Nothing
+  where
+    go bindCols = do
+      hdbcTrace "freeBoundCols"
+      mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
 
-ffinish :: Stmt -> IO ()
-ffinish stmt = withRawStmt stmt $ sqlFreeHandleSth_app 
 
-
-foreign import ccall safe "hdbc-odbc-helper.h wrapobjodbc"
-  wrapstmt :: Ptr CStmt -> Ptr WrappedCConn -> IO (Ptr WrappedCStmt)
+ffinish :: StmtWrapper -> IO ()
+ffinish = freeStmtIfNotAlready
 
 foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
-  sqlDescribeCol :: Ptr CStmt   
+  sqlDescribeCol :: SQLHSTMT
                  -> #{type SQLSMALLINT} -- ^ Column number
                  -> CString     -- ^ Column name
                  -> #{type SQLSMALLINT} -- ^ Buffer length
@@ -955,7 +904,7 @@ foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
                  -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLGetData"
-  sqlGetData :: Ptr CStmt       -- ^ statement handle
+  sqlGetData :: SQLHSTMT       -- ^ statement handle
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT} -- ^ target type
              -> CString -- ^ target value pointer (void * in C)
@@ -964,7 +913,7 @@ foreign import #{CALLCONV} safe "sql.h SQLGetData"
              -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLBindCol"
-  sqlBindCol :: Ptr CStmt            -- ^ statement handle
+  sqlBindCol :: SQLHSTMT            -- ^ statement handle
              -> #{type SQLUSMALLINT} -- ^ Column number
              -> #{type SQLSMALLINT}  -- ^ target type
              -> Ptr ColBuf           -- ^ target value pointer (void * in C)
@@ -972,32 +921,22 @@ foreign import #{CALLCONV} safe "sql.h SQLBindCol"
              -> Ptr (#{type SQLLEN}) -- ^ strlen_or_indptr
              -> IO #{type SQLRETURN}
 
-foreign import ccall safe "hdbc-odbc-helper.h sqlFreeHandleSth_app"
-  sqlFreeHandleSth_app :: Ptr WrappedCStmt -> IO ()
-
-foreign import ccall safe "hdbc-odbc-helper.h &sqlFreeHandleSth_finalizer"
-  sqlFreeHandleSth_ptr :: FunPtr (Ptr WrappedCStmt -> IO ())
-
 foreign import #{CALLCONV} safe "sql.h SQLPrepare"
-  sqlPrepare :: Ptr CStmt -> CString -> #{type SQLINTEGER} 
+  sqlPrepare :: SQLHSTMT -> CString -> #{type SQLINTEGER}
              -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLExecute"
-  sqlExecute :: Ptr CStmt -> IO #{type SQLRETURN}
-
-foreign import #{CALLCONV} safe "sql.h SQLAllocHandle"
-  sqlAllocStmtHandle :: #{type SQLSMALLINT} -> Ptr CConn ->
-                        Ptr (Ptr CStmt) -> IO #{type SQLRETURN}
+  sqlExecute :: SQLHSTMT -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLNumResultCols"
-  sqlNumResultCols :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
+  sqlNumResultCols :: SQLHSTMT -> Ptr #{type SQLSMALLINT}
                    -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLRowCount"
-  sqlRowCount :: Ptr CStmt -> Ptr #{type SQLINTEGER} -> IO #{type SQLRETURN}
+  sqlRowCount :: SQLHSTMT -> Ptr #{type SQLINTEGER} -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLBindParameter"
-  sqlBindParameter :: Ptr CStmt -- ^ Statement handle
+  sqlBindParameter :: SQLHSTMT -- ^ Statement handle
                    -> #{type SQLUSMALLINT} -- ^ Parameter Number
                    -> #{type SQLSMALLINT} -- ^ Input or output
                    -> #{type SQLSMALLINT} -- ^ Value type
@@ -1013,7 +952,7 @@ foreign import ccall safe "hdbc-odbc-helper.h &nullDataHDBC"
   nullDataHDBC :: Ptr #{type SQLLEN}
 
 foreign import #{CALLCONV} safe "sql.h SQLDescribeParam"
-  sqlDescribeParam :: Ptr CStmt 
+  sqlDescribeParam :: SQLHSTMT
                    -> #{type SQLUSMALLINT} -- ^ parameter number
                    -> Ptr #{type SQLSMALLINT} -- ^ data type ptr
                    -> Ptr #{type SQLULEN} -- ^ parameter size ptr
@@ -1022,16 +961,16 @@ foreign import #{CALLCONV} safe "sql.h SQLDescribeParam"
                    -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLFetch"
-  sqlFetch :: Ptr CStmt -> IO #{type SQLRETURN}
+  sqlFetch :: SQLHSTMT -> IO #{type SQLRETURN}
 
 foreign import ccall safe "hdbc-odbc-helper.h simpleSqlTables"
-  simpleSqlTables :: Ptr CStmt -> IO #{type SQLRETURN}
+  simpleSqlTables :: SQLHSTMT -> IO #{type SQLRETURN}
 
 foreign import ccall safe "hdbc-odbc-helper.h simpleSqlColumns"
-  simpleSqlColumns :: Ptr CStmt -> Ptr CChar -> 
+  simpleSqlColumns :: SQLHSTMT -> Ptr CChar ->
                       #{type SQLSMALLINT} -> IO #{type SQLRETURN}
 
-fgetparminfo :: Ptr CStmt -> IO [SqlColDesc]
+fgetparminfo :: SQLHSTMT -> IO [SqlColDesc]
 fgetparminfo cstmt =
     do ncols <- getNumParams cstmt
        mapM getname [1..ncols]
@@ -1041,7 +980,7 @@ fgetparminfo cstmt =
                          alloca $ \colsizeptr ->
                          alloca $ \nullableptr ->
               do poke datatypeptr 127 -- to test if sqlDescribeParam actually writes something to the area
-                 res <- sqlDescribeParam cstmt (fromInteger $ toInteger icol) -- cscolname 127 colnamelp 
+                 res <- sqlDescribeParam cstmt (fromInteger $ toInteger icol) -- cscolname 127 colnamelp
                                   datatypeptr colsizeptr nullPtr nullableptr
                  putStrLn $ show res
                  -- We need proper error handling here. Not all ODBC drivers supports SQLDescribeParam.
@@ -1051,12 +990,12 @@ fgetparminfo cstmt =
                  nullable <- peek nullableptr
                  return $ snd $ fromOTypeInfo "" datatype colsize nullable
 
-getNumParams :: Ptr CStmt -> IO Int16
+getNumParams :: SQLHSTMT -> IO Int16
 getNumParams sthptr = alloca $ \pcount ->
-    do sqlNumParams sthptr pcount >>= checkError "SQLNumResultCols" 
+    do sqlNumParams sthptr pcount >>= checkError "SQLNumResultCols"
                                           (StmtHandle sthptr)
        peek pcount
 
 foreign import #{CALLCONV} safe "sql.h SQLNumParams"
-  sqlNumParams :: Ptr CStmt -> Ptr #{type SQLSMALLINT} 
+  sqlNumParams :: SQLHSTMT -> Ptr #{type SQLSMALLINT}
                -> IO #{type SQLRETURN}
