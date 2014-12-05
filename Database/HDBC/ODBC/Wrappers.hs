@@ -32,7 +32,6 @@ import Database.HDBC.ODBC.Log
 import Foreign.Marshal hiding (void)
 import Foreign.Ptr
 import Foreign.Storable
-import Formatting
 import System.Mem.Weak (addFinalizer)
 
 import qualified Control.Concurrent.ReadWriteVar as RWV
@@ -62,7 +61,7 @@ sqlAllocEnv = do
 freeEnvIfNotAlready :: EnvWrapper -> IO ()
 freeEnvIfNotAlready w = modifyMVar_ (envHandle w) $ \maybeEnv -> do
   F.forM_ maybeEnv $ \hEnv -> do
-    hdbcTraceLT $ format ("Freeing environment with handle " % shown) hEnv
+    hdbcTrace $ "Freeing environment with handle " ++ show hEnv
     void $ c_sqlFreeHandle sQL_HANDLE_ENV (castPtr hEnv)
   return Nothing
 
@@ -73,11 +72,13 @@ withEnvOrDie :: EnvWrapper -> (SQLHENV -> IO a) -> IO a
 withEnvOrDie ew act = withMaybeEnv ew $ \maybeHandle ->
   case maybeHandle of
     Just h -> act h
-    Nothing -> throwSqlError SqlError
-                 { seState = ""
-                 , seNativeError = -1
-                 , seErrorMsg = "Tried to use a disposed ODBC Environment handle"
-                 }
+    Nothing -> do
+      hdbcTrace "Requested an ENV handle from disposed wrapper. Throwing."
+      throwSqlError SqlError
+        { seState = ""
+        , seNativeError = -1
+        , seErrorMsg = "Tried to use a disposed ODBC Environment handle"
+        }
 
 data DbcWrapper = DbcWrapper
   { connHandle :: RWVar (Maybe SQLHDBC) -- ^ If there is Nothing here, connection is already freed
@@ -108,7 +109,7 @@ freeDbcIfNotAlready :: Bool -> DbcWrapper -> IO ()
 freeDbcIfNotAlready checkDisconnect dbc = do
   RWV.modify_ (connHandle dbc) $ \maybeHandle -> do
     F.forM_ maybeHandle $ \hDbc -> do
-      hdbcTraceLT $ format ("Freeing connection with handle " % shown) hDbc
+      hdbcTrace $ "Freeing connection with handle " ++ show hDbc
       disconnectResult <- c_sqlDisconnect hDbc
       when checkDisconnect $ checkError "freeDbcIfNotAlready/SQLDisconnect" (DbcHandle hDbc) disconnectResult
       void $ c_sqlFreeHandle sQL_HANDLE_DBC (castPtr hDbc)
@@ -122,11 +123,13 @@ withDbcOrDie :: DbcWrapper -> (SQLHDBC -> IO a) -> IO a
 withDbcOrDie dw act = withMaybeDbc dw $ \maybeHandle ->
   case maybeHandle of
     Just h -> act h
-    Nothing -> throwSqlError SqlError
-                 { seState = ""
-                 , seNativeError = -1
-                 , seErrorMsg = "Tried to use a disposed ODBC Connection handle"
-                 }
+    Nothing -> do
+      hdbcTrace "Requested a DBC handle from a disposed wrapper. Throwing"
+      throwSqlError SqlError
+        { seState = ""
+        , seNativeError = -1
+        , seErrorMsg = "Tried to use a disposed ODBC Connection handle"
+        }
 
 data StmtWrapper = StmtWrapper
   { stmtHandle :: MVar (Maybe SQLHSTMT) -- ^ If there is Nothing here, statement is already finished
@@ -149,14 +152,15 @@ sqlAllocStmt dbc = do
 freeStmtIfNotAlready :: StmtWrapper -> IO ()
 freeStmtIfNotAlready stmt = modifyMVar_ (stmtHandle stmt) $ \maybeHandle -> do
   F.forM_ maybeHandle $ \hStmt -> do
-    hdbcTraceLT $ format ("Freeing statement with handle " % shown) hStmt
+    hdbcTrace $ "Freeing statement with handle " ++ show hStmt
     -- SQL Server might deadlock if closing handle to a statement in process of fetching
     -- network data so we have to cancel it explicitly. We also need to protect ourselves
-    -- from trying to cancel a statement, which has its connection already finalized.
+    -- from trying to cancel or free a statement, which has its connection already finalized.
     RWV.with (connHandle $ stmtConn stmt) $ \maybeConn ->
-      F.forM_ maybeConn $ \_ -> void $ c_sqlCancel hStmt
-    void $ c_sqlCloseCursor hStmt
-    void $ c_sqlFreeHandle sQL_HANDLE_STMT (castPtr hStmt)
+      F.forM_ maybeConn $ \_ -> do
+        void $ c_sqlCancel hStmt
+        void $ c_sqlCloseCursor hStmt
+        void $ c_sqlFreeHandle sQL_HANDLE_STMT (castPtr hStmt)
   return Nothing
 
 withMaybeStmt :: StmtWrapper -> (Maybe SQLHSTMT -> IO a) -> IO a
@@ -166,8 +170,10 @@ withStmtOrDie :: StmtWrapper -> (SQLHSTMT -> IO a) -> IO a
 withStmtOrDie sw act = withMaybeStmt sw $ \maybeHandle ->
   case maybeHandle of
     Just h -> act h
-    Nothing -> throwSqlError SqlError
-                 { seState = ""
-                 , seNativeError = -1
-                 , seErrorMsg = "Tried to use a disposed ODBC Statement handle"
-                 }
+    Nothing -> do
+      hdbcTrace $ "Requested a STMT handle from a disposed wrapper. Throwing."
+      throwSqlError SqlError
+        { seState = ""
+        , seNativeError = -1
+        , seErrorMsg = "Tried to use a disposed ODBC Statement handle"
+        }

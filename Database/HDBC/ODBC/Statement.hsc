@@ -67,19 +67,20 @@ fGetQueryInfo iconn children query =
        fakeExecute' sstate
 
 fakeExecute' :: SState -> IO ([SqlColDesc], [(String, SqlColDesc)])
-fakeExecute' sstate =
+fakeExecute' sstate = do
+  hdbcTrace "fakeExecute'"
   withStmtOrDie (sstmt sstate) $ \hStmt ->
-  withCStringLen (squery sstate) $ \(cquery, cqlen) -> do
-    hdbcTrace "in fexecute"
-    sqlPrepare hStmt cquery (fromIntegral cqlen) >>=
-      checkError "execute prepare" (StmtHandle hStmt)
+    withCStringLen (squery sstate) $ \(cquery, cqlen) -> do
+      hdbcTrace "fakeExecute' got stmt handle"
+      sqlPrepare hStmt cquery (fromIntegral cqlen) >>=
+        checkError "fakeExecute' prepare" (StmtHandle hStmt)
 
-    -- parmCount <- getNumParams sthptr
-    parmInfo <- fgetparminfo hStmt
+      -- parmCount <- getNumParams sthptr
+      parmInfo <- fgetparminfo hStmt
 
-    -- rc <- getNumResultCols sthptr
-    colInfo <- fgetcolinfo hStmt
-    return (parmInfo, colInfo)
+      -- rc <- getNumResultCols sthptr
+      colInfo <- fgetcolinfo hStmt
+      return (parmInfo, colInfo)
 
 -- | The Stament State
 data SState = SState
@@ -105,7 +106,7 @@ wrapStmt sstate = Statement
   { execute        = fexecute sstate
   , executeRaw     = return ()
   , executeMany    = fexecutemany sstate
-  , finish         = public_ffinish sstate
+  , finish         = ffinish sstate
   , fetchRow       = ffetchrow sstate
   , originalQuery  = (squery sstate)
   , getColumnNames = readMVar (colinfomv sstate) >>= (return . map fst)
@@ -122,18 +123,22 @@ newSth indbo mchildren query =
 
 fgettables :: DbcWrapper -> IO [String]
 fgettables iconn = do
+  hdbcTrace "fgettables"
   sstate <- newSState iconn ""
   withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    hdbcTrace "fgettables got stmt handle"
     simpleSqlTables hStmt >>= checkError "gettables simpleSqlTables" (StmtHandle hStmt)
     fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
   results <- fetchAllRows' $ wrapStmt sstate
   return $ map (\x -> fromSql (x !! 2)) results
 
 fdescribetable :: DbcWrapper -> String -> IO [(String, SqlColDesc)]
-fdescribetable iconn tablename =
+fdescribetable iconn tablename = do
+  hdbcTrace "fdescribetable"
   B.useAsCStringLen (BUTF8.fromString tablename) $ \(cs, csl) -> do
     sstate <- newSState iconn tablename
     withStmtOrDie (sstmt sstate) $ \hStmt -> do
+      hdbcTrace "fdescribetable got stmt handle"
       simpleSqlColumns hStmt cs (fromIntegral csl) >>= checkError "fdescribetable simpleSqlColumns" (StmtHandle hStmt)
       fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
     results <- fetchAllRows' $ wrapStmt sstate
@@ -143,20 +148,15 @@ fdescribetable iconn tablename =
 {- For now, we try to just  handle things as simply as possible.
 FIXME lots of room for improvement here (types, etc). -}
 fexecute :: SState -> [SqlValue] -> IO Integer
-fexecute sstate args =
-  withStmtOrDie (sstmt sstate) $ \hStmt -> do
-    hdbcTrace $ "in fexecute: " ++ show (squery sstate) ++ show args
+fexecute sstate args = do
+  hdbcTrace $ "fexecute: " ++ show (squery sstate) ++ show args
+  (finish, result) <- withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    hdbcTrace "fexecute got stmt handle"
     -- Realloc the statement
     modifyMVar_ (stmtPrepared sstate) $ \prep -> do
-      if prep
-        then do
-          c_sqlFreeStmt hStmt sQL_CLOSE >>= checkError "fexecute c_sqlFreeStmt sQL_CLOSE" (StmtHandle hStmt)
-          c_sqlFreeStmt hStmt sQL_UNBIND >>= checkError "fexecute c_sqlFreeStmt sQL_UNBIND" (StmtHandle hStmt)
-          c_sqlFreeStmt hStmt sQL_RESET_PARAMS >>= checkError "fexecute c_sqlFreeStmt sQL_RESET_PARAMS" (StmtHandle hStmt)
-          freeBoundCols sstate
-        else
-          B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) -> do
-            sqlPrepare hStmt cquery (fromIntegral cqlen) >>= checkError "execute prepare" (StmtHandle hStmt)
+      unless prep $
+        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) -> do
+          sqlPrepare hStmt cquery (fromIntegral cqlen) >>= checkError "execute prepare" (StmtHandle hStmt)
       return True -- Statement is always prepared after this block completes.
 
     bindArgs <- zipWithM (bindParam hStmt) args [1..]
@@ -172,10 +172,11 @@ fexecute sstate args =
 
     case rc of
       0 -> do rowcount <- getSqlRowCount hStmt
-              public_ffinish sstate
-              return (fromIntegral rowcount)
+              return (True, fromIntegral rowcount)
       colcount -> do fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
-                     return 0
+                     return (False, 0)
+  when finish $ ffinish sstate
+  return result
 
 getNumResultCols :: SQLHSTMT -> IO #{type SQLSMALLINT}
 getNumResultCols sthptr = alloca $ \pcount ->
@@ -202,10 +203,10 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
 
     do hdbcTrace $ "Binding col " ++ show icol ++ ": " ++ show arg
        rc1 <- sqlDescribeParam sthptr icol pdtype pcolsize pdecdigits pnullable
-       hdbcTrace $ "rc1 is " ++ show (isOK rc1)
-       coltype <- if isOK rc1 then Just <$> peek pdtype else return Nothing
-       colsize <- if isOK rc1 then Just <$> peek pcolsize else return Nothing
-       decdigits <- if isOK rc1 then Just <$> peek pdecdigits else return Nothing
+       hdbcTrace $ "rc1 is " ++ show (sqlSucceeded rc1)
+       coltype <- if sqlSucceeded rc1 then Just <$> peek pdtype else return Nothing
+       colsize <- if sqlSucceeded rc1 then Just <$> peek pcolsize else return Nothing
+       decdigits <- if sqlSucceeded rc1 then Just <$> peek pdecdigits else return Nothing
        hdbcTrace $ "Results: " ++ show (coltype, colsize, decdigits)
        case arg of
          SqlNull -> -- NULL parameter, bind it as such.
@@ -234,7 +235,7 @@ bindParam sthptr arg icol =  alloca $ \pdtype ->
                        (castPtr $ bvBuffer boundValue)
                        (bvBufferSize boundValue)
                        pcslen
-                     if isOK rc2
+                     if sqlSucceeded rc2
                         then do -- We bound it.  Make foreignPtrs and return.
                                 return $ Just (pcslen, castPtr $ bvBuffer boundValue)
                         else do -- Binding failed.  Free the data and raise
@@ -304,28 +305,33 @@ bindSqlValue sqlValue = case sqlValue of
     return result
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
-ffetchrow sstate = withMaybeStmt (sstmt sstate) $ \maybeStmt ->
-  case maybeStmt of
+ffetchrow sstate = do
+  result <- withMaybeStmt (sstmt sstate) $ \maybeStmt ->
+    case maybeStmt of
+      Nothing -> do
+        hdbcTrace "ffetchrow: no statement"
+        return Nothing
+      Just hStmt -> do
+        hdbcTrace "ffetchrow"
+        bindCols <- getBindCols sstate hStmt
+        hdbcTrace "ffetchrow: fetching"
+        rc <- sqlFetch hStmt
+        if rc == #{const SQL_NO_DATA}
+          then do
+            hdbcTrace "ffetchrow: no more rows"
+            return Nothing
+          else do
+            hdbcTrace "ffetchrow: fetching data"
+            checkError "sqlFetch" (StmtHandle hStmt) rc
+            sqlValues <- if rc == #{const SQL_SUCCESS} || rc == #{const SQL_SUCCESS_WITH_INFO}
+              then mapM (bindColToSqlValue hStmt) bindCols
+              else raiseError "sqlGetData" rc (StmtHandle hStmt)
+            return $ Just sqlValues
+  case result of
+    Just x -> return $ Just x
     Nothing -> do
-      hdbcTrace "ffetchrow: no statement"
+      ffinish sstate
       return Nothing
-    Just hStmt -> do
-      hdbcTrace "ffetchrow"
-      bindCols <- getBindCols sstate hStmt
-      hdbcTrace "ffetchrow: fetching"
-      rc <- sqlFetch hStmt
-      if rc == #{const SQL_NO_DATA}
-        then do
-          hdbcTrace "ffetchrow: no more rows"
-          public_ffinish sstate
-          return Nothing
-        else do
-          hdbcTrace "ffetchrow: fetching data"
-          checkError "sqlFetch" (StmtHandle hStmt) rc
-          sqlValues <- if rc == #{const SQL_SUCCESS} || rc == #{const SQL_SUCCESS_WITH_INFO}
-            then mapM (bindColToSqlValue hStmt) bindCols
-            else raiseError "sqlGetData" rc (StmtHandle hStmt)
-          return $ Just sqlValues
 
 getBindCols :: SState -> SQLHSTMT -> IO [(BindCol, Ptr #{type SQLLEN})]
 getBindCols sstate cstmt = do
@@ -404,12 +410,19 @@ getColData cstmt cBinding icol = do
 
 -- | ffetchrowBaseline is used for benchmarking fetches without the
 -- overhead of marshalling values.
-ffetchrowBaseline sstate = withStmtOrDie (sstmt sstate) $ \hStmt -> do
-  rc <- sqlFetch hStmt
-  if rc == #{const SQL_NO_DATA}
-    then do public_ffinish sstate
-            return Nothing
-    else do return (Just [])
+ffetchrowBaseline sstate = do
+  hdbcTrace "ffetchrowBaseline"
+  result <- withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    hdbcTrace "ffetchrowBaseline got stmt handle"
+    rc <- sqlFetch hStmt
+    if rc == #{const SQL_NO_DATA}
+      then return Nothing
+      else return (Just [])
+  case result of
+    Just x -> return $ Just x
+    Nothing -> do
+      ffinish sstate
+      return Nothing
 
 data ColBuf
 
@@ -871,13 +884,6 @@ fexecutemany :: SState -> [[SqlValue]] -> IO ()
 fexecutemany sstate arglist =
     mapM_ (fexecute sstate) arglist >> return ()
 
--- Finish and change state
-public_ffinish :: SState -> IO ()
-public_ffinish sstate = do
-  hdbcTrace "public_ffinish"
-  ffinish $ sstmt sstate
-  freeBoundCols sstate
-
 freeBoundCols :: SState -> IO ()
 freeBoundCols sstate = modifyMVar_ (bindColsMV sstate) $ \maybeBindCols -> do
     F.mapM_ go maybeBindCols
@@ -887,9 +893,14 @@ freeBoundCols sstate = modifyMVar_ (bindColsMV sstate) $ \maybeBindCols -> do
       hdbcTrace "freeBoundCols"
       mapM_ (\(bindCol, pSqlLen) -> freeBindCol bindCol >> free pSqlLen) bindCols
 
-
-ffinish :: StmtWrapper -> IO ()
-ffinish = freeStmtIfNotAlready
+ffinish :: SState -> IO ()
+ffinish sstate = do
+  hdbcTrace "ffinish"
+  withMaybeStmt (sstmt sstate) $ F.mapM_ $ \hStmt -> do
+    c_sqlFreeStmt hStmt sQL_CLOSE >>= checkError "fexecute c_sqlFreeStmt sQL_CLOSE" (StmtHandle hStmt)
+    c_sqlFreeStmt hStmt sQL_UNBIND >>= checkError "fexecute c_sqlFreeStmt sQL_UNBIND" (StmtHandle hStmt)
+    c_sqlFreeStmt hStmt sQL_RESET_PARAMS >>= checkError "fexecute c_sqlFreeStmt sQL_RESET_PARAMS" (StmtHandle hStmt)
+  freeBoundCols sstate
 
 foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
   sqlDescribeCol :: SQLHSTMT

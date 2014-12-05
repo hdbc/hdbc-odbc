@@ -19,7 +19,7 @@ import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Log
 import Foreign.C.String
 import Foreign.Ptr
-import Formatting
+import Text.Printf
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -49,7 +49,7 @@ foreign import #{CALLCONV} safe "sql.h SQLAllocHandle"
 c_sqlAllocHandle :: SQLSMALLINT -> SQLHANDLE -> Ptr SQLHANDLE -> IO SQLRETURN
 c_sqlAllocHandle handleType inputHandle outputHandlePtr = do
   result <- imp_sqlAllocHandle handleType inputHandle outputHandlePtr
-  hdbcTraceLT $ format ("SQLAllocHandle(" % int % ", " % shown % ", " % shown % ") returned " % int) handleType inputHandle outputHandlePtr result
+  hdbcTrace $ printf "SQLAllocHandle(%d, %s, %s) returned %d" handleType (show inputHandle) (show outputHandlePtr) result
   return result
 
 foreign import #{CALLCONV} safe "sql.h SQLFreeHandle"
@@ -58,7 +58,7 @@ foreign import #{CALLCONV} safe "sql.h SQLFreeHandle"
 c_sqlFreeHandle :: SQLSMALLINT -> SQLHANDLE -> IO SQLRETURN
 c_sqlFreeHandle handleType handle = do
   result <- imp_sqlFreeHandle handleType handle
-  hdbcTraceLT $ format ("SQLFreeHandle(" % int % ", " % shown % ") returned " % int) handleType handle result
+  hdbcTrace $ printf "SQLFreeHandle(%d, %s) returned %d" handleType (show handle) result
   return result
 
 foreign import #{CALLCONV} safe "sql.h SQLCancel"
@@ -67,7 +67,7 @@ foreign import #{CALLCONV} safe "sql.h SQLCancel"
 c_sqlCancel :: SQLHSTMT -> IO SQLRETURN
 c_sqlCancel hStmt = do
   result <- imp_sqlCancel hStmt
-  hdbcTraceLT $ format ("SQLCancel(" % shown % ") returned " % int) hStmt result
+  hdbcTrace $ printf "SQLCancel(%s) returned %d" (show hStmt) result
   return result
 
 foreign import #{CALLCONV} safe "sql.h SQLCloseCursor"
@@ -76,7 +76,7 @@ foreign import #{CALLCONV} safe "sql.h SQLCloseCursor"
 c_sqlCloseCursor :: SQLHSTMT -> IO SQLRETURN
 c_sqlCloseCursor hStmt = do
   result <- imp_sqlCloseCursor hStmt
-  hdbcTraceLT $ format ("SQLCloseCursor(" % shown % ") returned " % int) hStmt result
+  hdbcTrace $ printf "SQLCloseCursor(%s) returned %d" (show hStmt) result
   return result
 
 foreign import #{CALLCONV} safe "sql.h SQLDisconnect"
@@ -84,7 +84,7 @@ foreign import #{CALLCONV} safe "sql.h SQLDisconnect"
 
 c_sqlDisconnect hDbc = do
   result <- imp_sqlDisconnect hDbc
-  hdbcTraceLT $ format ("SQLDisconnect(" % shown % ") returned " % int) hDbc result
+  hdbcTrace $ printf "SQLDisconnect(%s) returned %d" (show hDbc) result
   return result
 
 foreign import #{CALLCONV} safe "sql.h SQLGetDiagRec"
@@ -96,9 +96,8 @@ c_sqlGetDiagRec :: SQLSMALLINT -> Ptr () -> SQLSMALLINT -> CString -> Ptr SQLINT
                 -> CString -> SQLSMALLINT -> Ptr SQLSMALLINT -> IO SQLRETURN
 c_sqlGetDiagRec handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr = do
   result <- imp_sqlGetDiagRec handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr
-  hdbcTraceLT $ format ("SqlGetDiagRec(" % int % ", " % shown % ", " % int % ", " % shown % ", " % shown %
-                        ", " % shown % ", " % int % ", " % shown % ") returned " % int)
-                handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr result
+  hdbcTrace $ printf "SqlGetDiagRec(%d, %s, %d, %s, %s, %s, %d, %s) returned %d"
+                handleType (show handle) recNumber (show sqlState) (show nativeErrorPtr) (show messageText) bufferLength (show textLengthPtr) result
   return result
 
 sQL_CLOSE :: SQLUSMALLINT
@@ -115,5 +114,5 @@ foreign import #{CALLCONV} safe "sql.h SQLFreeStmt"
 
 c_sqlFreeStmt stmt option = do
   result <- imp_sqlFreeStmt stmt option
-  hdbcTraceLT $ format ("SqlFreeStmt(" % shown % ", " % int % ") returned " % int) stmt option result
+  hdbcTrace $ printf "SqlFreeStmt(%s, %d) returned %d" (show stmt) option result
   return result

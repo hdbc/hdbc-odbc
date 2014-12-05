@@ -1,5 +1,5 @@
 name:          HDBC-odbc
-version:       2.4.0.0
+version:       2.5.0.0
 cabal-version: >=1.8
 build-type:    Simple
 license:       BSD3
@@ -53,13 +53,11 @@ library
   build-depends:
       base >= 4.3.1.0 && < 5
     , concurrent-extra >= 0.7.0.8
-    , formatting
     , mtl
     , HDBC>=2.1.0
     , time>=1.2.0.3
     , utf8-string
     , bytestring
-    , text
   c-sources:
       cbits/hdbc-odbc-helper.c
   include-dirs:
