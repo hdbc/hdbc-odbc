@@ -85,12 +85,16 @@ executable runtests
   main-is: runtests.hs
   other-modules:
       Database.HDBC.ODBC
+      Database.HDBC.ODBC.Api.Errors
+    , Database.HDBC.ODBC.Api.Imports
+    , Database.HDBC.ODBC.Api.Types
     , Database.HDBC.ODBC.Connection
-    , Database.HDBC.ODBC.Statement
-    , Database.HDBC.ODBC.Types
-    , Database.HDBC.ODBC.Utils
-    , Database.HDBC.ODBC.TypeConv
     , Database.HDBC.ODBC.ConnectionImpl
+    , Database.HDBC.ODBC.Log
+    , Database.HDBC.ODBC.Statement
+    , Database.HDBC.ODBC.TypeConv
+    , Database.HDBC.ODBC.Utils
+    , Database.HDBC.ODBC.Wrappers
     , SpecificDB
     , SpecificDBTests
     , TestMisc
