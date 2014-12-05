@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 module Database.HDBC.ODBC.Api.Errors
   ( checkError
   , raiseError
@@ -45,11 +46,10 @@ getDiag ht hp irow =
   allocaBytes 6 $ \csstate ->
   alloca $ \pnaterr ->
   allocaBytes 1025 $ \csmsg ->
-  alloca $ \pmsglen ->do
+  alloca $ \pmsglen -> do
     ret <- c_sqlGetDiagRec ht hp irow csstate pnaterr csmsg 1024 pmsglen
     if sqlSucceeded ret
-     then return []
-     else do
+     then do
       state <- peekCStringLen (csstate, 5)
       nat <- peek pnaterr
       msglen <- peek pmsglen
@@ -57,3 +57,5 @@ getDiag ht hp irow =
       let msg = BUTF8.toString msgbs
       next <- getDiag ht hp (irow + 1)
       return $ (state, show nat ++ ": " ++ msg) : next
+    else
+      return []
