@@ -269,6 +269,12 @@ data BoundValue = BoundValue
 bindSqlValue :: SqlValue -> IO BoundValue
 bindSqlValue sqlValue = case sqlValue of
   SqlString s -> do
+-- GHC for Windows strings are implemented with wchar_t symbols, which are 16-bit UCS-2 and ODBC
+-- driver expects exactly that type. On Linux machines things get harder because wchar_t is 32-bit
+-- (UTF-32) while ODBC WCHAR might be either 16 or 32 bit. So on Linux we convert our string to
+-- UTF-8 and pass it to the driver telling it that we are passing SQL_C_CHAR data for a SQL_WCHAR
+-- column and hoping that the driver will convert back from UTF-8 to appropriate representation.
+#ifdef mingw32_HOST_OS
     (wstrPtr, wstrLen) <- newCWStringLen s
     let result = BoundValue
           { bvValueType         = #{const SQL_C_WCHAR}
@@ -280,6 +286,22 @@ bindSqlValue sqlValue = case sqlValue of
           }
     hdbcTrace $ "bind SqlString " ++ s ++ ": " ++ show result
     return result
+#else
+    let utf8ByteString = BUTF8.fromString s
+    B.unsafeUseAsCStringLen utf8ByteString $ \(unsafeStrPtr, strLen) -> do
+      safeStrPtr <- mallocBytes strLen
+      copyBytes safeStrPtr unsafeStrPtr strLen
+      let result = BoundValue
+            { bvValueType         = #{const SQL_C_CHAR}
+            , bvDefaultColumnType = #{const SQL_WCHAR}
+            , bvDefaultColumnSize = fromIntegral strLen
+            , bvDefaultDecDigits  = 0
+            , bvBuffer            = castPtr safeStrPtr
+            , bvBufferSize        = fromIntegral strLen
+            }
+      l $ "bind SqlString " ++ s ++ ": " ++ show result
+      return result
+#endif
   SqlByteString bs -> B.unsafeUseAsCStringLen bs $ \(s,len) -> do
     res <- mallocBytes len
     copyBytes res s len
