@@ -107,6 +107,7 @@ wrapStmt sstate = Statement
   , executeRaw     = return ()
   , executeMany    = fexecutemany sstate
   , finish         = ffinish sstate
+  , finalize       = ffinalize sstate
   , fetchRow       = ffetchrow sstate
   , originalQuery  = (squery sstate)
   , getColumnNames = readMVar (colinfomv sstate) >>= (return . map fst)
@@ -254,13 +255,13 @@ getSqlRowCount cstmt = alloca $ \prows ->
 
 data BoundValue = BoundValue
   -- | Type of the value in the buffer
-  { bvValueType         :: #{type SQLSMALLINT}
+  { bvValueType         :: !(#{type SQLSMALLINT})
   -- | Type of the SQL value to use if ODBC driver doesn't report one
-  , bvDefaultColumnType :: #{type SQLSMALLINT}
-  , bvDefaultColumnSize :: #{type SQLULEN}
-  , bvDefaultDecDigits  :: #{type SQLSMALLINT}
-  , bvBuffer            :: Ptr ()
-  , bvBufferSize        :: #{type SQLLEN}
+  , bvDefaultColumnType :: !(#{type SQLSMALLINT})
+  , bvDefaultColumnSize :: !(#{type SQLULEN})
+  , bvDefaultDecDigits  :: !(#{type SQLSMALLINT})
+  , bvBuffer            :: !(Ptr ())
+  , bvBufferSize        :: !(#{type SQLLEN})
   } deriving (Show)
 
 -- | Marshals given SqlValue returning intended ValueType, default ColumnType,
@@ -279,7 +280,7 @@ bindSqlValue sqlValue = case sqlValue of
           , bvBufferSize        = fromIntegral $ wstrLen * #{size wchar_t}
           }
     hdbcTrace $ "bind SqlString " ++ s ++ ": " ++ show result
-    return result
+    return $! result
   SqlByteString bs -> B.unsafeUseAsCStringLen bs $ \(s,len) -> do
     res <- mallocBytes len
     copyBytes res s len
@@ -292,7 +293,7 @@ bindSqlValue sqlValue = case sqlValue of
           , bvBufferSize        = fromIntegral len
           }
     hdbcTrace $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
-    return result
+    return $! result
   -- | This is rather hacky, I just replicate the behaviour of a previous version
   x -> do
     hdbcTrace $ "bind other " ++ show x
@@ -302,7 +303,7 @@ bindSqlValue sqlValue = case sqlValue of
           , bvDefaultColumnType = #{const SQL_CHAR}
           }
     hdbcTrace $ "bound other " ++ show x ++ ": " ++ show result
-    return result
+    return $! result
 
 ffetchrow :: SState -> IO (Maybe [SqlValue])
 ffetchrow sstate = do
@@ -901,6 +902,11 @@ ffinish sstate = do
     c_sqlFreeStmt hStmt sQL_UNBIND >>= checkError "fexecute c_sqlFreeStmt sQL_UNBIND" (StmtHandle hStmt)
     c_sqlFreeStmt hStmt sQL_RESET_PARAMS >>= checkError "fexecute c_sqlFreeStmt sQL_RESET_PARAMS" (StmtHandle hStmt)
   freeBoundCols sstate
+
+ffinalize :: SState -> IO ()
+ffinalize sstate = do
+  ffinish sstate
+  freeStmtIfNotAlready $ sstmt sstate
 
 foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
   sqlDescribeCol :: SQLHSTMT
