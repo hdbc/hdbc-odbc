@@ -300,7 +300,7 @@ bindSqlValue sqlValue = case sqlValue of
             , bvBuffer            = castPtr safeStrPtr
             , bvBufferSize        = fromIntegral strLen
             }
-      l $ "bind SqlString " ++ s ++ ": " ++ show result
+      hdbcTrace $ "bind SqlString " ++ s ++ ": " ++ show result
       return result
 #endif
   SqlByteString bs -> B.unsafeUseAsCStringLen bs $ \(s,len) -> do
