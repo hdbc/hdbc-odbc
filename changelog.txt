@@ -1,3 +1,8 @@
+2.4.0.1 - 15 May 2015
+
+  * Switched to using UTF-8 encoding for binding WCHAR_T values on Linux. Earlier version tried
+    to use C wchar_t type, which confused some (in particular PostgreSQL) drivers.
+
 2.4.0.0 - 12 Nov 2014
 
   * Changed parameter binding implementation to fix bugs with wide character strings and binary
