@@ -1,4 +1,4 @@
-{-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE CPP, DoAndIfThenElse #-}
 module Database.HDBC.ODBC.Api.Errors
   ( checkError
   , raiseError
@@ -13,9 +13,6 @@ import Foreign.C
 import Foreign.Marshal.Alloc
 import Foreign.Ptr
 import Foreign.Storable
-
-import qualified Data.ByteString as B
-import qualified Data.ByteString.UTF8 as BUTF8
 
 checkError :: String -> AnyHandle -> SQLRETURN -> IO ()
 checkError msg o res =
@@ -47,15 +44,14 @@ getDiag ht hp irow =
   alloca $ \pnaterr ->
   allocaBytes 1025 $ \csmsg ->
   alloca $ \pmsglen -> do
-    ret <- c_sqlGetDiagRec ht hp irow csstate pnaterr csmsg 1024 pmsglen
+    ret <- c_sqlGetDiagRecW ht hp irow csstate pnaterr csmsg 1024 pmsglen
     if sqlSucceeded ret
      then do
-      state <- peekCStringLen (csstate, 5)
+      state <- peekCWStringLen (csstate, 5)
       nat <- peek pnaterr
       msglen <- peek pmsglen
-      msgbs <- B.packCStringLen (csmsg, fromIntegral msglen)
-      let msg = BUTF8.toString msgbs
+      msgstr <- peekCWStringLen (csmsg, fromIntegral msglen)
       next <- getDiag ht hp (irow + 1)
-      return $ (state, show nat ++ ": " ++ msg) : next
+      return $ (state, show nat ++ ": " ++ msgstr) : next
     else
       return []

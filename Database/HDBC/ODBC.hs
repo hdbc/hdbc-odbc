@@ -14,10 +14,10 @@ Written by John Goerzen, jgoerzen\@complete.org
 
 module Database.HDBC.ODBC
     (
-     connectODBC, Connection(), getQueryInfo
+     connectODBC, Connection(), getQueryInfo, setAutoCommit
     )
 
 where
 
 import Database.HDBC.ODBC.Connection(connectODBC, Connection())
-import Database.HDBC.ODBC.ConnectionImpl(getQueryInfo)
+import Database.HDBC.ODBC.ConnectionImpl(getQueryInfo, setAutoCommit)

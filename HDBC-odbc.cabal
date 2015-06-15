@@ -1,5 +1,5 @@
 name:          HDBC-odbc
-version:       2.5.0.0
+version:       2.5.1.0
 cabal-version: >=1.8
 build-type:    Simple
 license:       BSD3
@@ -72,7 +72,10 @@ executable runtests
   if flag(buildtests)
     buildable: True
     build-depends:
-        HUnit
+        base
+      , HUnit
+      , HDBC
+      , HDBC-odbc
       , QuickCheck
       , testpack
       , containers
@@ -84,40 +87,19 @@ executable runtests
     buildable: False
   main-is: runtests.hs
   other-modules:
-      Database.HDBC.ODBC
-      Database.HDBC.ODBC.Api.Errors
-    , Database.HDBC.ODBC.Api.Imports
-    , Database.HDBC.ODBC.Api.Types
-    , Database.HDBC.ODBC.Connection
-    , Database.HDBC.ODBC.ConnectionImpl
-    , Database.HDBC.ODBC.Log
-    , Database.HDBC.ODBC.Statement
-    , Database.HDBC.ODBC.TypeConv
-    , Database.HDBC.ODBC.Utils
-    , Database.HDBC.ODBC.Wrappers
-    , SpecificDB
+      SpecificDB
     , SpecificDBTests
     , TestMisc
     , TestSbasics
     , TestUtils
     , Testbasics
     , Tests
-  hs-source-dirs: ., testsrc
-  c-sources:
-    cbits/hdbc-odbc-helper.c
-  include-dirs:
-    cbits
-
-  if os(mingw32) || os(win32)
-    extra-libraries: odbc32
-  else
-    extra-libraries: odbc
-
+  hs-source-dirs: testsrc
   ghc-options: -O2
   extensions:
       ExistentialQuantification
     , ForeignFunctionInterface
-    , PatternSignatures
+    , ScopedTypeVariables
 
 executable stresstest
   if flag(buildstresstest)

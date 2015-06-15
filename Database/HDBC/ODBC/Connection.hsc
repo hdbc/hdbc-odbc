@@ -8,13 +8,14 @@ import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
 import qualified Database.HDBC.ODBC.ConnectionImpl as Impl
+import Database.HDBC.ODBC.Api.Imports
 import Database.HDBC.ODBC.Api.Errors
 import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Statement
 import Database.HDBC.ODBC.Wrappers
 import Foreign.C.Types
 import Foreign.C.String
-import Foreign.Marshal
+import Foreign.Marshal hiding (void)
 import Foreign.Storable
 import Database.HDBC.ODBC.Utils
 import Foreign.ForeignPtr
@@ -22,7 +23,7 @@ import Foreign.Ptr
 import Data.Word
 import Data.Int
 import Control.Concurrent.MVar
-import Control.Monad (when)
+import Control.Monad (when, void)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 
@@ -125,10 +126,7 @@ mkConn args iconn = withDbcOrDie iconn $ \cconn ->
        txninfo <- ((peek psqlusmallint)::IO (#{type SQLUSMALLINT}))
        let txnsupport = txninfo /= #{const SQL_TC_NONE}
 
-       when txnsupport
-         (disableAutoCommit cconn
-          >>= checkError "sqlSetConnectAttr" (DbcHandle cconn)
-         )
+       when txnsupport . void $ fSetAutoCommit cconn False
        return $ Impl.Connection {
                             Impl.getQueryInfo = fGetQueryInfo iconn children,
                             Impl.disconnect = fdisconnect iconn children,
@@ -145,7 +143,8 @@ mkConn args iconn = withDbcOrDie iconn $ \cconn ->
                             Impl.dbServerVer = serverver,
                             Impl.dbTransactionSupport = txnsupport,
                             Impl.getTables = fgettables iconn,
-                            Impl.describeTable = fdescribetable iconn
+                            Impl.describeTable = fdescribetable iconn,
+                            Impl.setAutoCommit = \x -> withDbcOrDie iconn $ \conn -> fSetAutoCommit conn x
                            }
 
 --------------------------------------------------
@@ -170,6 +169,22 @@ fdisconnect iconn mchildren  = do
   closeAllChildren mchildren
   freeDbcIfNotAlready True iconn
 
+fGetAutoCommit :: SQLHDBC -> IO Bool
+fGetAutoCommit hdbc = do
+  value <- with (0 :: SQLUINTEGER) $ \acBuf -> do
+    c_sqlGetConnectAttr hdbc sQL_ATTR_AUTOCOMMIT (castPtr acBuf) sQL_IS_UINTEGER nullPtr
+      >>= checkError "sqlGetConnectAttr" (DbcHandle hdbc)
+    peek acBuf
+  return $ value /= sQL_AUTOCOMMIT_OFF
+
+fSetAutoCommit :: SQLHDBC -> Bool -> IO Bool
+fSetAutoCommit hdbc newValue = do
+  oldValue <- fGetAutoCommit hdbc
+  let newValueRaw = if newValue then sQL_AUTOCOMMIT_ON else sQL_AUTOCOMMIT_OFF
+  c_sqlSetConnectAttr hdbc sQL_ATTR_AUTOCOMMIT (wordPtrToPtr $ fromIntegral newValueRaw) sQL_IS_UINTEGER
+    >>= checkError "sqlSetConnectAttr" (DbcHandle hdbc)
+  return oldValue
+
 foreign import #{CALLCONV} safe "sql.h SQLSetEnvAttr"
   sqlSetEnvAttr :: SQLHENV -> #{type SQLINTEGER} ->
                    Ptr () -> #{type SQLINTEGER} -> IO #{type SQLRETURN}
@@ -183,17 +198,9 @@ foreign import #{CALLCONV} safe "sql.h SQLDriverConnect"
 foreign import ccall safe "hdbc-odbc-helper.h getSqlOvOdbc3"
   getSqlOvOdbc3 :: Ptr ()
 
-foreign import ccall safe "hdbc-odbc-helper.h SQLSetConnectAttr"
-  sqlSetConnectAttr :: SQLHDBC -> #{type SQLINTEGER}
-                    -> Ptr #{type SQLUINTEGER} -> #{type SQLINTEGER}
-                    -> IO #{type SQLRETURN}
-
 foreign import #{CALLCONV} safe "sql.h SQLEndTran"
   sqlEndTran :: #{type SQLSMALLINT} -> SQLHDBC -> #{type SQLSMALLINT}
              -> IO #{type SQLRETURN}
-
-foreign import ccall safe "hdbc-odbc-helper.h disableAutoCommit"
-  disableAutoCommit :: SQLHDBC -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLGetInfo"
   sqlGetInfo :: SQLHDBC -> #{type SQLUSMALLINT} -> Ptr () ->

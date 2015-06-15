@@ -13,12 +13,6 @@ void *getSqlOvOdbc3(void) {
   return (void *)SQL_OV_ODBC3;
 }
 
-SQLRETURN disableAutoCommit(SQLHDBC conn) {
-  return SQLSetConnectAttr(conn, SQL_ATTR_AUTOCOMMIT,
-                           (SQLPOINTER) SQL_AUTOCOMMIT_OFF,
-                           SQL_IS_UINTEGER);
-}
-
 SQLRETURN simpleSqlTables(SQLHSTMT stmt) {
   return SQLTables(stmt, NULL, 0, NULL, 0, "%", 1, "TABLE", 5);
 }

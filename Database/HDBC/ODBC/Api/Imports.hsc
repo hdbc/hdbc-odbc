@@ -12,7 +12,13 @@ module Database.HDBC.ODBC.Api.Imports
   , c_sqlDisconnect
   , c_sqlFreeHandle
   , c_sqlFreeStmt
-  , c_sqlGetDiagRec
+  , c_sqlGetDiagRecW
+  , c_sqlSetConnectAttr
+  , c_sqlGetConnectAttr
+  , sQL_ATTR_AUTOCOMMIT
+  , sQL_AUTOCOMMIT_ON
+  , sQL_AUTOCOMMIT_OFF
+  , sQL_IS_UINTEGER
   ) where
 
 import Database.HDBC.ODBC.Api.Types
@@ -27,6 +33,7 @@ import Text.Printf
 
 #include <sql.h>
 #include <sqlext.h>
+#include <sqlucode.h>
 
 #ifdef mingw32_HOST_OS
 #let CALLCONV = "stdcall"
@@ -87,15 +94,15 @@ c_sqlDisconnect hDbc = do
   hdbcTrace $ printf "SQLDisconnect(%s) returned %d" (show hDbc) result
   return result
 
-foreign import #{CALLCONV} safe "sql.h SQLGetDiagRec"
-  imp_sqlGetDiagRec :: SQLSMALLINT -> Ptr () -> SQLSMALLINT -> CString
-                    -> Ptr SQLINTEGER -> CString -> SQLSMALLINT
-                    -> Ptr SQLSMALLINT -> IO SQLRETURN
+foreign import #{CALLCONV} safe "sql.h SQLGetDiagRecW"
+  imp_sqlGetDiagRecW :: SQLSMALLINT -> Ptr () -> SQLSMALLINT -> CWString
+                     -> Ptr SQLINTEGER -> CWString -> SQLSMALLINT
+                     -> Ptr SQLSMALLINT -> IO SQLRETURN
 
-c_sqlGetDiagRec :: SQLSMALLINT -> Ptr () -> SQLSMALLINT -> CString -> Ptr SQLINTEGER
-                -> CString -> SQLSMALLINT -> Ptr SQLSMALLINT -> IO SQLRETURN
-c_sqlGetDiagRec handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr = do
-  result <- imp_sqlGetDiagRec handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr
+c_sqlGetDiagRecW :: SQLSMALLINT -> Ptr () -> SQLSMALLINT -> CWString -> Ptr SQLINTEGER
+                 -> CWString -> SQLSMALLINT -> Ptr SQLSMALLINT -> IO SQLRETURN
+c_sqlGetDiagRecW handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr = do
+  result <- imp_sqlGetDiagRecW handleType handle recNumber sqlState nativeErrorPtr messageText bufferLength textLengthPtr
   hdbcTrace $ printf "SqlGetDiagRec(%d, %s, %d, %s, %s, %s, %d, %s) returned %d"
                 handleType (show handle) recNumber (show sqlState) (show nativeErrorPtr) (show messageText) bufferLength (show textLengthPtr) result
   return result
@@ -112,7 +119,39 @@ sQL_RESET_PARAMS = #{const SQL_RESET_PARAMS}
 foreign import #{CALLCONV} safe "sql.h SQLFreeStmt"
   imp_sqlFreeStmt :: SQLHSTMT -> SQLUSMALLINT -> IO SQLRETURN
 
+c_sqlFreeStmt :: SQLHSTMT -> SQLUSMALLINT -> IO SQLRETURN
 c_sqlFreeStmt stmt option = do
   result <- imp_sqlFreeStmt stmt option
   hdbcTrace $ printf "SqlFreeStmt(%s, %d) returned %d" (show stmt) option result
   return result
+
+foreign import #{CALLCONV} safe "sql.h SQLSetConnectAttr"
+  imp_sqlSetConnectAttr :: SQLHDBC -> SQLINTEGER -> SQLPOINTER -> SQLINTEGER -> IO SQLRETURN
+
+c_sqlSetConnectAttr :: SQLHDBC -> SQLINTEGER -> SQLPOINTER -> SQLINTEGER -> IO SQLRETURN
+c_sqlSetConnectAttr conn attr valuePtr stringLength = do
+  result <- imp_sqlSetConnectAttr conn attr valuePtr stringLength
+  hdbcTrace $ printf "SQLSetConnectAttr (%s, %d, %s, %d) returned %d" (show conn) attr (show valuePtr) stringLength result
+  return result
+
+foreign import #{CALLCONV} safe "sql.h SQLGetConnectAttr"
+  imp_sqlGetConnectAttr :: SQLHDBC -> SQLINTEGER -> SQLPOINTER -> SQLINTEGER -> Ptr SQLINTEGER -> IO SQLRETURN
+
+c_sqlGetConnectAttr :: SQLHDBC -> SQLINTEGER -> SQLPOINTER -> SQLINTEGER -> Ptr SQLINTEGER -> IO SQLRETURN
+c_sqlGetConnectAttr conn attr valuePtr bufferLength stringLengthPtr = do
+  result <- imp_sqlGetConnectAttr conn attr valuePtr bufferLength stringLengthPtr
+  hdbcTrace $ printf "SQLGetConnectAttr (%s, %d, %s, %d, %s) return %d"
+    (show conn) attr (show valuePtr) bufferLength (show stringLengthPtr) result
+  return result
+
+sQL_ATTR_AUTOCOMMIT :: SQLINTEGER
+sQL_ATTR_AUTOCOMMIT = #{const SQL_ATTR_AUTOCOMMIT}
+
+sQL_AUTOCOMMIT_ON :: SQLUINTEGER
+sQL_AUTOCOMMIT_ON = #{const SQL_AUTOCOMMIT_ON}
+
+sQL_AUTOCOMMIT_OFF :: SQLUINTEGER
+sQL_AUTOCOMMIT_OFF = #{const SQL_AUTOCOMMIT_OFF}
+
+sQL_IS_UINTEGER :: SQLINTEGER
+sQL_IS_UINTEGER = #{const SQL_IS_UINTEGER}

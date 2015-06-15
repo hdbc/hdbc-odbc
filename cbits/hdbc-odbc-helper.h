@@ -13,7 +13,6 @@ int sqlSucceeded(SQLRETURN ret);
 SQLLEN nullDataHDBC;
 void *getSqlOvOdbc3(void);
 
-SQLRETURN disableAutoCommit(SQLHDBC conn);
 SQLRETURN simpleSqlTables(SQLHSTMT stmt);
 SQLRETURN simpleSqlColumns(SQLHSTMT stmt, SQLCHAR *tablename,
                                   SQLSMALLINT tnlen);

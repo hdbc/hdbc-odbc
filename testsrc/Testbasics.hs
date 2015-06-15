@@ -3,9 +3,9 @@ import Test.HUnit
 import Database.HDBC
 import TestUtils
 import System.IO
-import Control.Exception hiding (catch)
+import Control.Exception
 
-openClosedb = sqlTestCase $ 
+openClosedb = sqlTestCase $
     do dbh <- connectDB
        disconnect dbh
 
@@ -29,7 +29,7 @@ basicQueries = dbTestCase (\dbh ->
        assertEqual "nToSql compare" [[nToSql (2::Int)]] r
        assertEqual "string compare" [[SqlString "2"]] r
                           )
-    
+
 createTable = dbTestCase (\dbh ->
     do run dbh "CREATE TABLE hdbctest1 (testname VARCHAR(20), testid INTEGER, testint INTEGER, testtext TEXT)" []
        commit dbh
@@ -51,7 +51,7 @@ runReplace = dbTestCase (\dbh ->
        r <- fetchAllRows sth
        assertEqual "" [r1, r2] r
                        )
-    where r1 = [toSql "runReplace", iToSql 1, iToSql 1234, SqlString "testdata"] 
+    where r1 = [toSql "runReplace", iToSql 1, iToSql 1234, SqlString "testdata"]
           r2 = [toSql "runReplace", iToSql 2, iToSql 2, SqlNull]
 
 executeReplace = dbTestCase (\dbh ->
@@ -136,11 +136,11 @@ testWithTransaction = dbTestCase (\dbh ->
        qrysth <- prepare dbh "SELECT testid FROM hdbctest1 WHERE testname = 'withTransaction' ORDER BY testid"
        execute qrysth []
        fetchAllRows qrysth >>= (assertEqual "initial commit" [[toSql "0"]])
-       
+
        -- Let's try a rollback.
        catch (withTransaction dbh (\_ -> do executeMany sth rows
                                             fail "Foo"))
-             (\_ -> return ())
+             (\(_ :: SomeException) -> return ())
        execute qrysth []
        fetchAllRows qrysth >>= (assertEqual "rollback" [[SqlString "0"]])
 
@@ -150,7 +150,7 @@ testWithTransaction = dbTestCase (\dbh ->
        fetchAllRows qrysth >>= (assertEqual "final commit" ([iToSql 0]:rows))
                                )
     where rows = map (\x -> [iToSql x]) [1..9]
-       
+
 tests = TestList
         [
          TestLabel "openClosedb" openClosedb,

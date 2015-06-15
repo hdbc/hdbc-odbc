@@ -4,7 +4,7 @@ import qualified Database.HDBC.Statement as Types
 import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
 
-data Connection = 
+data Connection =
     Connection {
                 getQueryInfo :: String -> IO ([SqlColDesc], [(String, SqlColDesc)]),
                 disconnect :: IO (),
@@ -20,7 +20,9 @@ data Connection =
                 dbServerVer :: String,
                 dbTransactionSupport :: Bool,
                 getTables :: IO [String],
-                describeTable :: String -> IO [(String, ColTypes.SqlColDesc)]
+                describeTable :: String -> IO [(String, ColTypes.SqlColDesc)],
+                -- | Changes AutoCommit mode of the given connection. Returns previous value.
+                setAutoCommit :: Bool -> IO Bool
                }
 
 instance Types.IConnection Connection where
