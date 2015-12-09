@@ -3,9 +3,9 @@ import Test.HUnit
 import Database.HDBC
 import TestUtils
 import System.IO
-import Control.Exception hiding (catch)
+import Control.Exception
 
-openClosedb = sqlTestCase $ 
+openClosedb = sqlTestCase $
     do dbh <- connectDB
        disconnect dbh
 
@@ -28,7 +28,7 @@ basicQueries = dbTestCase (\dbh ->
        sFetchRow sth >>= (assertEqual "row 1" (Just [Just "2"]))
        sFetchRow sth >>= (assertEqual "last row" Nothing)
                           )
-    
+
 createTable = dbTestCase (\dbh ->
     do sRun dbh "CREATE TABLE hdbctest1 (testname VARCHAR(20), testid INTEGER, testint INTEGER, testtext TEXT)" []
        commit dbh
@@ -60,8 +60,8 @@ executeReplace = dbTestCase (\dbh ->
        commit dbh
        sth <- prepare dbh "SELECT * FROM hdbctest1 WHERE testname = ? ORDER BY testid"
        sExecute sth [Just "executeReplace"]
-       sFetchRow sth >>= (assertEqual "r1" 
-                         (Just $ map Just ["executeReplace", "1", "1234", 
+       sFetchRow sth >>= (assertEqual "r1"
+                         (Just $ map Just ["executeReplace", "1", "1234",
                                            "Foo"]))
        sFetchRow sth >>= (assertEqual "r2"
                          (Just [Just "executeReplace", Just "2", Nothing,
@@ -124,11 +124,11 @@ testWithTransaction = dbTestCase (\dbh ->
        qrysth <- prepare dbh "SELECT testid FROM hdbctest1 WHERE testname = 'withTransaction' ORDER BY testid"
        sExecute qrysth []
        sFetchAllRows qrysth >>= (assertEqual "initial commit" [[Just "0"]])
-       
+
        -- Let's try a rollback.
        catch (withTransaction dbh (\_ -> do sExecuteMany sth rows
                                             fail "Foo"))
-             (\_ -> return ())
+             (\(_ :: SomeException) -> return ())
        sExecute qrysth []
        sFetchAllRows qrysth >>= (assertEqual "rollback" [[Just "0"]])
 
@@ -138,7 +138,7 @@ testWithTransaction = dbTestCase (\dbh ->
        sFetchAllRows qrysth >>= (assertEqual "final commit" ([Just "0"]:rows))
                                )
     where rows = map (\x -> [Just . show $ x]) [1..9]
-       
+
 tests = TestList
         [
          TestLabel "openClosedb" openClosedb,

@@ -5,7 +5,7 @@ module Database.HDBC.ODBC.TypeConv(fromOTypeInfo, fromOTypeCol) where
 import Database.HDBC.Types
 import Database.HDBC
 import Database.HDBC.DriverUtils
-import Database.HDBC.ODBC.Types
+import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Utils
 import Foreign.C.Types
 import Foreign.ForeignPtr

@@ -1,107 +1,117 @@
-Name: HDBC-odbc
-Version: 2.4.0.1
-Cabal-Version: >=1.8
-Build-type: Simple
-License: BSD3
-Maintainer: Anton Dessiatov <anton.dessiatov@gmail.com>
-            Nicolas Wu <nicolas.wu@gmail.com>
-Author: John Goerzen
-Copyright: Copyright (c) 2005-2011 John Goerzen
-license-file: LICENSE
-extra-source-files: LICENSE, hdbc-odbc-helper.h,
-                    Makefile,
-                    README.md,
-                    testsrc/TestTime.hs
-                    changelog.txt
-homepage: https://github.com/hdbc/hdbc-odbc
-Category: Database
-synopsis: ODBC driver for HDBC
-Description: This package provides an ODBC database backend for HDBC.
- It is cross-platform and supports unixODBC on Unix/Linux/POSIX platforms
- and Microsoft ODBC on Windows.  It is also the preferred way to access
- MySQL databases from Haskell.
-Stability: Beta
+name:          HDBC-odbc
+version:       2.5.0.0
+cabal-version: >=1.8
+build-type:    Simple
+license:       BSD3
+maintainer:    Anton Dessiatov <anton.dessiatov@gmail.com>
+author:        John Goerzen
+copyright:     Copyright (c) 2005-2014 John Goerzen, Nicolas Wu, Anton Dessiatov
+license-file:  LICENSE
+extra-source-files:
+    LICENSE
+  , cbits/hdbc-odbc-helper.h
+  , Makefile
+  , README.md
+  , testsrc/TestTime.hs
+  , changelog.txt
+homepage:      https://github.com/hdbc/hdbc-odbc
+category:      Database
+synopsis:      ODBC driver for HDBC
+description:
+  This package provides an ODBC database backend for HDBC.
+  It is cross-platform and supports unixODBC on Unix/Linux/POSIX platforms
+  and Microsoft ODBC on Windows.  It is also the preferred way to access
+  MySQL databases from Haskell.
+stability:     Beta
 
-Flag buildtests
+flag buildtests
   description: Build the executable to run unit tests
   default: False
 
-Flag buildstresstest
+flag buildstresstest
   description: Build the stress testing executable
   default: False
 
-Library
-  Exposed-Modules: Database.HDBC.ODBC
-  Other-Modules: Database.HDBC.ODBC.Connection,
-    Database.HDBC.ODBC.Statement,
-    Database.HDBC.ODBC.Types,
-    Database.HDBC.ODBC.Utils,
-    Database.HDBC.ODBC.TypeConv,
-    Database.HDBC.ODBC.ConnectionImpl
-  Extensions:
-    ExistentialQuantification,
-    ForeignFunctionInterface,
-    ScopedTypeVariables
-  Build-Depends: base >= 4.3.1.0 && < 5
-               , mtl
-               , HDBC>=2.1.0
-               , time>=1.2.0.3
-               , utf8-string
-               , bytestring
-  C-Sources: hdbc-odbc-helper.c
-  if os(mingw32) || os(win32)
-    Extra-Libraries: odbc32
-  else
-    Extra-Libraries: odbc
-  include-dirs: .
-  -- extra-lib-dirs:
+library
+  exposed-modules:
+      Database.HDBC.ODBC
+  other-modules:
+      Database.HDBC.ODBC.Api.Errors
+    , Database.HDBC.ODBC.Api.Imports
+    , Database.HDBC.ODBC.Api.Types
+    , Database.HDBC.ODBC.Connection
+    , Database.HDBC.ODBC.ConnectionImpl
+    , Database.HDBC.ODBC.Log
+    , Database.HDBC.ODBC.Statement
+    , Database.HDBC.ODBC.TypeConv
+    , Database.HDBC.ODBC.Utils
+    , Database.HDBC.ODBC.Wrappers
+  extensions:
+      ExistentialQuantification
+    , ForeignFunctionInterface
+    , ScopedTypeVariables
+  build-depends:
+      base >= 4.3.1.0 && < 5
+    , concurrent-extra >= 0.7.0.8
+    , mtl
+    , HDBC>=2.1.0
+    , time>=1.2.0.3
+    , utf8-string
+    , bytestring
+  c-sources:
+      cbits/hdbc-odbc-helper.c
+  include-dirs:
+      cbits
 
-Executable runtests
+  if os(mingw32) || os(win32)
+    extra-libraries: odbc32
+  else
+    extra-libraries: odbc, pthread
+
+executable runtests
   if flag(buildtests)
-    Buildable: True
-    Build-Depends: HUnit, QuickCheck, testpack, containers, old-time,
-                   time, old-locale, convertible
+    buildable: True
+    build-depends:
+        base
+      , HUnit
+      , HDBC
+      , HDBC-odbc
+      , QuickCheck
+      , testpack
+      , containers
+      , old-time
+      , time
+      , old-locale
+      , convertible
   else
-    Buildable: False
-  Main-Is: runtests.hs
-  Other-Modules: Database.HDBC.ODBC,
-    Database.HDBC.ODBC.Connection,
-    Database.HDBC.ODBC.Statement,
-    Database.HDBC.ODBC.Types,
-    Database.HDBC.ODBC.Utils,
-    Database.HDBC.ODBC.TypeConv,
-    Database.HDBC.ODBC.ConnectionImpl
-    SpecificDB,
-    SpecificDBTests,
-    TestMisc,
-    TestSbasics,
-    TestUtils,
-    Testbasics,
-    Tests
-  Hs-Source-Dirs: ., testsrc
-  C-Sources: hdbc-odbc-helper.c
-  if os(mingw32) || os(win32)
-    Extra-Libraries: odbc32
-  else
-    Extra-Libraries: odbc
-  include-dirs: .
-  GHC-Options: -O2
-  Extensions:
-    ExistentialQuantification,
-    ForeignFunctionInterface,
-    PatternSignatures
+    buildable: False
+  main-is: runtests.hs
+  other-modules:
+      SpecificDB
+    , SpecificDBTests
+    , TestMisc
+    , TestSbasics
+    , TestUtils
+    , Testbasics
+    , Tests
+  hs-source-dirs: testsrc
+  ghc-options: -O2
+  extensions:
+      ExistentialQuantification
+    , ForeignFunctionInterface
+    , ScopedTypeVariables
 
-Executable stresstest
+executable stresstest
   if flag(buildstresstest)
-    Buildable: True
-    Build-Depends:
+    buildable: True
+    build-depends:
         base
       , HDBC
       , HDBC-odbc
       , random
       , resource-pool
   else
-    Buildable: False
-  Main-Is: stresstest.hs
-  Hs-Source-Dirs: stresstest
-  GHC-Options: -threaded -rtsopts
+    buildable: False
+  main-is: stresstest.hs
+  hs-source-dirs: stresstest
+  ghc-options: -threaded -rtsopts
