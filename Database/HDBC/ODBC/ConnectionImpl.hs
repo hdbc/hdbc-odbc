@@ -3,6 +3,7 @@ module Database.HDBC.ODBC.ConnectionImpl where
 import qualified Database.HDBC.Statement as Types
 import qualified Database.HDBC.Types as Types
 import Database.HDBC.ColTypes as ColTypes
+import Control.Exception (finally)
 
 data Connection =
     Connection {
@@ -30,6 +31,9 @@ instance Types.IConnection Connection where
   commit = commit
   rollback = rollback
   run = run
+  runRaw conn sql = do
+    sth <- prepare conn sql
+    Types.executeRaw sth `finally` Types.finish sth
   prepare = prepare
   clone = clone
   hdbcDriverName = hdbcDriverName

@@ -104,7 +104,7 @@ newSState indbo query = SState
 wrapStmt :: SState -> Statement
 wrapStmt sstate = Statement
   { execute        = fexecute sstate
-  , executeRaw     = return ()
+  , executeRaw     = fexecuteraw sstate
   , executeMany    = fexecutemany sstate
   , finish         = ffinish sstate
   , fetchRow       = ffetchrow sstate
@@ -177,6 +177,36 @@ fexecute sstate args = do
                      return (False, 0)
   when finish $ ffinish sstate
   return result
+
+fexecuteraw :: SState -> IO ()
+fexecuteraw sstate = do
+  hdbcTrace $ "fexecuteraw: " ++ show (squery sstate)
+  withStmtOrDie (sstmt sstate) $ \hStmt -> do
+    hdbcTrace "fexecuteraw got stmt handle"
+    -- Realloc the statement
+    modifyMVar_ (stmtPrepared sstate) $ \prep -> do
+      unless prep $
+        B.useAsCStringLen (BUTF8.fromString (squery sstate)) $ \(cquery, cqlen) -> do
+          sqlPrepare hStmt cquery (fromIntegral cqlen) >>= checkError "executeraw prepare" (StmtHandle hStmt)
+      return True -- Statement is always prepared after this block completes.
+
+    bindArgs <- zipWithM (bindParam hStmt) [] [1..]
+    hdbcTrace $ "Ready for sqlExecute: " ++ show (squery sstate)
+    r <- sqlExecute hStmt
+    mapM_ (\(x, y) -> free x >> free y) (catMaybes bindArgs)
+
+    case r of
+      #{const SQL_NO_DATA} -> return () -- Update that did nothing
+      x -> checkError "executeraw execute" (StmtHandle hStmt) x
+
+    let getAllResults = do
+                r <- sqlMoreResults hStmt
+                case r of
+                  #{const SQL_SUCCESS} -> getAllResults
+                  #{const SQL_NO_DATA} -> return ()
+                  x -> checkError "executeraw getAllResults" (StmtHandle hStmt) x
+    getAllResults
+  ffinish sstate
 
 getNumResultCols :: SQLHSTMT -> IO #{type SQLSMALLINT}
 getNumResultCols sthptr = alloca $ \pcount ->
@@ -965,6 +995,9 @@ foreign import #{CALLCONV} safe "sql.h SQLPrepare"
 
 foreign import #{CALLCONV} safe "sql.h SQLExecute"
   sqlExecute :: SQLHSTMT -> IO #{type SQLRETURN}
+
+foreign import #{CALLCONV} safe "sql.h SQLMoreResults"
+  sqlMoreResults :: SQLHSTMT -> IO #{type SQLRETURN}
 
 foreign import #{CALLCONV} safe "sql.h SQLNumResultCols"
   sqlNumResultCols :: SQLHSTMT -> Ptr #{type SQLSMALLINT}
