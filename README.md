@@ -10,10 +10,13 @@ Please see HDBC itself for documentation on use.
 
 This package provides one function in module Database.HDBC.ODBC:
 
-    -- | Connect to an ODBC server.
-    --   For information on the meaning of the passed string, please see:
-    -- <http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>
-    connectODBC :: String -> IO Connection
+> Connect to an ODBC server.
+> For information on the meaning of the passed string, please see:
+> <http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>
+
+> ```haskell
+> connectODBC :: String -> IO Connection
+> ```
 
 
 For example, you might use `connectODBC` as follows:
@@ -21,8 +24,7 @@ For example, you might use `connectODBC` as follows:
     connectODBC "DSN=hdbctest1"
 
 For more information about HDBC-ODBC,
-please visit the [wiki](https://github.com/hdbc/hdbc-odbc/wiki).  
-For details of the first argument string, see <http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>.
+please visit the [wiki](https://github.com/hdbc/hdbc-odbc/wiki).
 
 Differences from HDBC standard
 ------------------------------
