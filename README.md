@@ -15,12 +15,14 @@ This package provides one function in module Database.HDBC.ODBC:
     -- <http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>
     connectODBC :: String -> IO Connection
 
+
 For example, you might use `connectODBC` as follows:
 
     connectODBC "DSN=hdbctest1"
 
 For more information about HDBC-ODBC,
-please visit the [wiki](https://github.com/hdbc/hdbc-odbc/wiki).
+please visit the [wiki](https://github.com/hdbc/hdbc-odbc/wiki).  
+For details of the first argument string, see <http://msdn2.microsoft.com/en-us/library/ms715433(VS.85).aspx>.
 
 Differences from HDBC standard
 ------------------------------
