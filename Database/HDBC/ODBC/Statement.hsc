@@ -252,9 +252,9 @@ getSqlRowCount cstmt = alloca $ \prows ->
         peek prows
         --note: As of ODBC-3.52, the row count is only a C int, ie 32bit.
 
-data BoundValue = BoundValue
+data BoundValue = BoundValue {
   -- | Type of the value in the buffer
-  { bvValueType         :: !(#{type SQLSMALLINT})
+    bvValueType         :: !(#{type SQLSMALLINT})
   -- | Type of the SQL value to use if ODBC driver doesn't report one
   , bvDefaultColumnType :: !(#{type SQLSMALLINT})
   , bvDefaultColumnSize :: !(#{type SQLULEN})
@@ -315,7 +315,7 @@ bindSqlValue sqlValue = case sqlValue of
           }
     hdbcTrace $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
     return $! result
-  -- | This is rather hacky, I just replicate the behaviour of a previous version
+  -- This is rather hacky, I just replicate the behaviour of a previous version
   x -> do
     hdbcTrace $ "bind other " ++ show x
     bsResult <- bindSqlValue $ SqlByteString (fromSql x)
