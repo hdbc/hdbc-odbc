@@ -32,8 +32,9 @@ import Foreign.Marshal
 import Foreign.Storable
 import Control.Monad
 import Data.Word
-import Data.Time.Calendar (fromGregorian)
-import Data.Time.LocalTime (TimeOfDay(TimeOfDay), LocalTime(LocalTime))
+import Data.Time.Calendar (fromGregorian, toGregorian)
+import Data.Time.LocalTime (TimeOfDay(TimeOfDay), LocalTime(LocalTime),
+                            utc, utcToLocalTime)
 import Data.Int
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.ByteString as B
@@ -263,6 +264,26 @@ data BoundValue = BoundValue {
   , bvBufferSize        :: !(#{type SQLLEN})
   } deriving (Show)
 
+bindLocalTime :: String -> LocalTime -> IO BoundValue
+bindLocalTime logName lt@(LocalTime d (TimeOfDay hour min sec)) = do
+  let len = sizeOf (undefined :: StructTime)
+      (year, month, day) = toGregorian d
+  res <- mallocBytes len
+  poke res $ StructTimestamp
+             (fromIntegral year) (fromIntegral month) (fromIntegral day)
+             (fromIntegral hour) (fromIntegral min) (truncate sec)
+             (truncate $ (snd $ properFraction sec) * 1e9)
+  let result = BoundValue
+        { bvValueType         = #{const SQL_C_TIMESTAMP}
+        , bvDefaultColumnType = #{const SQL_TIMESTAMP}
+        , bvDefaultColumnSize = fromIntegral len
+        , bvDefaultDecDigits  = 0
+        , bvBuffer            = castPtr res
+        , bvBufferSize        = fromIntegral len
+        }
+  hdbcTrace $ "bind " ++ logName ++ " as " ++ show lt ++ ": " ++ show result
+  return $! result
+
 -- | Marshals given SqlValue returning intended ValueType, default ColumnType,
 -- and a CStringLen with a buffer containing bound value. Pointer in the CStringLen
 -- structure must be freed by caller
@@ -315,6 +336,8 @@ bindSqlValue sqlValue = case sqlValue of
           }
     hdbcTrace $ "bind SqlByteString " ++ show bs ++ ": " ++ show result
     return $! result
+  SqlLocalTime lt -> bindLocalTime "SqlLocalTime" lt
+  SqlUTCTime t -> bindLocalTime "SqlUTCTime" $ utcToLocalTime utc t
   -- This is rather hacky, I just replicate the behaviour of a previous version
   x -> do
     hdbcTrace $ "bind other " ++ show x
