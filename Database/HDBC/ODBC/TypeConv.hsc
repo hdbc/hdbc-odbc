@@ -35,6 +35,7 @@ fromOTypeInfo colname datatype colsize nullable =
                 }
     )
 
+fromOTypeCol :: [SqlValue] -> (String, SqlColDesc)
 fromOTypeCol (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
     fromOTypeInfo (fromSql colname)
                   (fromIntegral ((fromSql datatype)::Int))
