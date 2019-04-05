@@ -75,7 +75,7 @@ connectODBC args =
   -- Create the Environment Handle
   env <- sqlAllocEnv
   withEnvOrDie env $ \hEnv ->
-    sqlSetEnvAttr hEnv #{const SQL_ATTR_ODBC_VERSION} (getSqlOvOdbc3) 0
+    void $ sqlSetEnvAttr hEnv #{const SQL_ATTR_ODBC_VERSION} (getSqlOvOdbc3) 0
 
   -- Create the DBC handle.
   dbc <- sqlAllocDbc env

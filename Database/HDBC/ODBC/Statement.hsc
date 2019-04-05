@@ -24,7 +24,7 @@ import Foreign.C.Types
 import Foreign.Ptr
 import Control.Concurrent.MVar
 import Foreign.C.String
-import Foreign.Marshal
+import Foreign.Marshal hiding (void)
 import Foreign.Storable
 import Control.Monad
 import Data.Word
@@ -120,7 +120,7 @@ fgettables iconn = do
   withStmtOrDie (sstmt sstate) $ \hStmt -> do
     hdbcTrace "fgettables got stmt handle"
     simpleSqlTables hStmt >>= checkError "gettables simpleSqlTables" (StmtHandle hStmt)
-    fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+    fgetcolinfo hStmt >>= void . swapMVar (colinfomv sstate)
   results <- fetchAllRows' $ wrapStmt sstate
   return $ map (\x -> fromSql (x !! 2)) results
 
@@ -132,7 +132,7 @@ fdescribetable iconn tablename = do
     withStmtOrDie (sstmt sstate) $ \hStmt -> do
       hdbcTrace "fdescribetable got stmt handle"
       simpleSqlColumns hStmt cs (fromIntegral csl) >>= checkError "fdescribetable simpleSqlColumns" (StmtHandle hStmt)
-      fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+      fgetcolinfo hStmt >>= void . swapMVar (colinfomv sstate)
     results <- fetchAllRows' $ wrapStmt sstate
     hdbcTrace $ show results
     return $ map fromOTypeCol results
@@ -165,7 +165,7 @@ fexecute sstate args = do
     case rc of
       0 -> do rowcount <- getSqlRowCount hStmt
               return (True, fromIntegral rowcount)
-      _ -> do fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+      _ -> do fgetcolinfo hStmt >>= void . swapMVar (colinfomv sstate)
               return (False, 0)
   when finish $ ffinish sstate
   return result
@@ -720,7 +720,7 @@ mkBindColString cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
-  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
 
 mkBindColStringEC :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
@@ -731,7 +731,7 @@ mkBindColWString cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColWString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
-  sqlBindCol cstmt col (#{const SQL_C_WCHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_WCHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf (fromIntegral bufLen) col, pStrLen)
 
 mkBindColWStringEC :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
@@ -742,49 +742,49 @@ mkBindColBit :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColBit cstmt col _ = do
   hdbcTrace "mkBindCol: BindColBit"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 
 mkBindColTinyInt :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColTinyInt cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTinyInt"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 
 mkBindColShort :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColShort cstmt col _ = do
   hdbcTrace "mkBindCol: BindColShort"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 
 mkBindColLong :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColLong cstmt col _ = do
   hdbcTrace "mkBindCol: BindColSize"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 
 mkBindColBigInt :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColBigInt cstmt col _ = do
   hdbcTrace "mkBindCol: BindColBigInt"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 
 mkBindColFloat :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColFloat cstmt col _ = do
   hdbcTrace "mkBindCol: BindColFloat"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColFloat buf, pStrLen)
 
 mkBindColDouble :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColDouble cstmt col _ = do
   hdbcTrace "mkBindCol: BindColDouble"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDouble buf, pStrLen)
 
 mkBindColBinary :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
@@ -792,28 +792,28 @@ mkBindColBinary cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColBinary"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
   (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
-  sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBinary buf (fromIntegral bufLen) col, pStrLen)
 
 mkBindColDate :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColDate cstmt col _ = do
   hdbcTrace "mkBindCol: BindColDate"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDate buf, pStrLen)
 
 mkBindColTime :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColTime cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTime"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTime buf, pStrLen)
 
 mkBindColTimestamp :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
 mkBindColTimestamp cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTimestamp"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
-  sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  void $ sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTimestamp buf, pStrLen)
 
 mkBindColGetData :: Word16 -> IO (BindCol, Ptr a)
@@ -933,8 +933,8 @@ fgetcolinfo cstmt =
                          alloca $ \datatypeptr ->
                          alloca $ \colsizeptr ->
                          alloca $ \nullableptr ->
-              do sqlDescribeCol cstmt icol cscolname 127 colnamelp
-                                datatypeptr colsizeptr nullPtr nullableptr
+              do void $ sqlDescribeCol cstmt icol cscolname 127 colnamelp
+                                       datatypeptr colsizeptr nullPtr nullableptr
                  colnamelen <- peek colnamelp
                  colnamebs <- B.packCStringLen (cscolname, fromIntegral colnamelen)
                  let colname = BUTF8.toString colnamebs
