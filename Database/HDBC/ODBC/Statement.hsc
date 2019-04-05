@@ -165,8 +165,8 @@ fexecute sstate args = do
     case rc of
       0 -> do rowcount <- getSqlRowCount hStmt
               return (True, fromIntegral rowcount)
-      colcount -> do fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
-                     return (False, 0)
+      _ -> do fgetcolinfo hStmt >>= swapMVar (colinfomv sstate)
+              return (False, 0)
   when finish $ ffinish sstate
   return result
 
@@ -739,49 +739,49 @@ mkBindColWStringEC cstmt col = mkBindColString cstmt col . fmap extendFactor  wh
   extendFactor sz = sz * ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)
 
 mkBindColBit :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColBit cstmt col mColSize = do
+mkBindColBit cstmt col _ = do
   hdbcTrace "mkBindCol: BindColBit"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 
 mkBindColTinyInt :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColTinyInt cstmt col mColSize = do
+mkBindColTinyInt cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTinyInt"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 
 mkBindColShort :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColShort cstmt col mColSize = do
+mkBindColShort cstmt col _ = do
   hdbcTrace "mkBindCol: BindColShort"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 
 mkBindColLong :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColLong cstmt col mColSize = do
+mkBindColLong cstmt col _ = do
   hdbcTrace "mkBindCol: BindColSize"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 
 mkBindColBigInt :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColBigInt cstmt col mColSize = do
+mkBindColBigInt cstmt col _ = do
   hdbcTrace "mkBindCol: BindColBigInt"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 
 mkBindColFloat :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColFloat cstmt col mColSize = do
+mkBindColFloat cstmt col _ = do
   hdbcTrace "mkBindCol: BindColFloat"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColFloat buf, pStrLen)
 
 mkBindColDouble :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColDouble cstmt col mColSize = do
+mkBindColDouble cstmt col _ = do
   hdbcTrace "mkBindCol: BindColDouble"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
@@ -796,21 +796,21 @@ mkBindColBinary cstmt col mColSize = do
   return (BindColBinary buf (fromIntegral bufLen) col, pStrLen)
 
 mkBindColDate :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColDate cstmt col mColSize = do
+mkBindColDate cstmt col _ = do
   hdbcTrace "mkBindCol: BindColDate"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDate buf, pStrLen)
 
 mkBindColTime :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColTime cstmt col mColSize = do
+mkBindColTime cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTime"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTime buf, pStrLen)
 
 mkBindColTimestamp :: SQLHSTMT -> Word16 -> Maybe Int -> IO (BindCol, Ptr Int64)
-mkBindColTimestamp cstmt col mColSize = do
+mkBindColTimestamp cstmt col _ = do
   hdbcTrace "mkBindCol: BindColTimestamp"
   (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
@@ -870,31 +870,31 @@ bindColToSqlValue' pcstmt (BindColWString buf bufLen col) strLen
       hdbcTrace $ "bindColToSqlValue BindColWString " ++ show bs ++ " " ++ show strLen
       return $ SqlByteString bs
   | otherwise = getColData pcstmt #{const SQL_CHAR} col
-bindColToSqlValue' _ (BindColBit     buf) strLen = do
+bindColToSqlValue' _ (BindColBit     buf) _ = do
   bit <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColBit " ++ show bit
   return $ SqlChar (castCUCharToChar bit)
-bindColToSqlValue' _ (BindColTinyInt buf) strLen = do
+bindColToSqlValue' _ (BindColTinyInt buf) _ = do
   tinyInt <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColTinyInt " ++ show tinyInt
   return $ SqlChar (castCCharToChar tinyInt)
-bindColToSqlValue' _ (BindColShort   buf) strLen = do
+bindColToSqlValue' _ (BindColShort   buf) _ = do
   short <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColShort" ++ show short
   return $ SqlInt32 (fromIntegral short)
-bindColToSqlValue' _ (BindColLong    buf) strLen = do
+bindColToSqlValue' _ (BindColLong    buf) _ = do
   long <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColLong " ++ show long
   return $ SqlInt32 (fromIntegral long)
-bindColToSqlValue' _ (BindColBigInt  buf) strLen = do
+bindColToSqlValue' _ (BindColBigInt  buf) _ = do
   bigInt <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColBigInt " ++ show bigInt
   return $ SqlInt64 (fromIntegral bigInt)
-bindColToSqlValue' _ (BindColFloat   buf) strLen = do
+bindColToSqlValue' _ (BindColFloat   buf) _ = do
   float <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColFloat " ++ show float
   return $ SqlDouble (realToFrac float)
-bindColToSqlValue' _ (BindColDouble  buf) strLen = do
+bindColToSqlValue' _ (BindColDouble  buf) _ = do
   double <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColDouble " ++ show double
   return $ SqlDouble (realToFrac double)
@@ -904,17 +904,17 @@ bindColToSqlValue' pcstmt (BindColBinary  buf bufLen col) strLen
       hdbcTrace $ "bindColToSqlValue BindColBinary " ++ show bs
       return $ SqlByteString bs
   | otherwise = getColData pcstmt (#{const SQL_C_BINARY}) col
-bindColToSqlValue' _ (BindColDate buf) strLen = do
+bindColToSqlValue' _ (BindColDate buf) _ = do
   StructDate year month day <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColDate"
   return $ SqlLocalDate $ fromGregorian
     (fromIntegral year) (fromIntegral month) (fromIntegral day)
-bindColToSqlValue' _ (BindColTime buf) strLen = do
+bindColToSqlValue' _ (BindColTime buf) _ = do
   StructTime hour minute second <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColTime"
   return $ SqlLocalTimeOfDay $ TimeOfDay
     (fromIntegral hour) (fromIntegral minute) (fromIntegral second)
-bindColToSqlValue' _ (BindColTimestamp buf) strLen = do
+bindColToSqlValue' _ (BindColTimestamp buf) _ = do
   StructTimestamp year month day hour minute second nanosecond <- peek buf
   hdbcTrace $ "bindColToSqlValue BindColTimestamp"
   return $ SqlLocalTime $ LocalTime
