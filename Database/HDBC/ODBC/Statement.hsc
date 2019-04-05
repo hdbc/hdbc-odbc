@@ -467,6 +467,13 @@ data BindCol
   | BindColTimestamp (Ptr StructTimestamp)
   | BindColGetData #{type SQLUSMALLINT}
 
+mallocBuffer :: forall a. Storable a => Int -> IO (Int, Ptr a, Ptr #{type SQLLEN})
+mallocBuffer n = do
+  let bufLen = sizeOf (undefined :: a) * n
+  hdbcTrace $ "mallocBuffer " ++ show n ++ " -> " ++ show bufLen
+  buf <- mallocBytes bufLen
+  pBufLen <- malloc
+  return (bufLen, buf, pBufLen)
 
 -- Intervals and GUIDs have not been implemented, since there is no
 -- equivalent SqlValue for these.
@@ -681,98 +688,72 @@ wcSize = 2
 mkBindColString cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
-  let bufLen  = sizeOf (undefined :: CChar) * (colSize + 1)
-  buf     <- mallocBytes bufLen
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
   sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColString buf (fromIntegral bufLen) col, pStrLen)
 mkBindColStringEC cstmt col = mkBindColString cstmt col . fmap (* utf8EncodingMaximum)
 mkBindColWString cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColWString"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
-  let bufLen  = sizeOf (undefined :: CWchar) * (colSize + 1)
-  buf     <- mallocBytes bufLen
-  pStrLen <- malloc
-  sqlBindCol cstmt col (#{const SQL_C_CHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
+  (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
+  sqlBindCol cstmt col (#{const SQL_C_WCHAR}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColWString buf (fromIntegral bufLen) col, pStrLen)
 mkBindColWStringEC cstmt col = mkBindColString cstmt col . fmap extendFactor  where
   extendFactor sz = sz * ((utf8EncodingMaximum + wcSize - 1) `quot` wcSize)
 mkBindColBit cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColBit"
-  let bufLen  = sizeOf (undefined :: CChar)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_BIT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBit buf, pStrLen)
 mkBindColTinyInt cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColTinyInt"
-  let bufLen  = sizeOf (undefined :: CUChar)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_STINYINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTinyInt buf, pStrLen)
 mkBindColShort cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColShort"
-  let bufLen  = sizeOf (undefined :: CShort)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SSHORT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColShort buf, pStrLen)
 mkBindColLong cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColSize"
-  let bufLen  = sizeOf (undefined :: CLong)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SLONG}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColLong buf, pStrLen)
 mkBindColBigInt cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColBigInt"
-  let bufLen  = sizeOf (undefined :: CInt)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_SBIGINT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBigInt buf, pStrLen)
 mkBindColFloat cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColFloat"
-  let bufLen  = sizeOf (undefined :: CFloat)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_FLOAT}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColFloat buf, pStrLen)
 mkBindColDouble cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColDouble"
-  let bufLen  = sizeOf (undefined :: CDouble)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_DOUBLE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDouble buf, pStrLen)
 mkBindColBinary cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColBinary"
   let colSize = min colBufSizeMaximum $ fromMaybe colBufSizeDefault mColSize
-  let bufLen  = sizeOf (undefined :: CUChar) * (colSize + 1)
-  buf     <- mallocBytes bufLen
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer (colSize + 1)
   sqlBindCol cstmt col (#{const SQL_C_BINARY}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColBinary buf (fromIntegral bufLen) col, pStrLen)
 mkBindColDate cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColDate"
-  let bufLen = sizeOf (undefined :: StructDate)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_DATE}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColDate buf, pStrLen)
 mkBindColTime cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColTime"
-  let bufLen = sizeOf (undefined :: StructTime)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIME}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTime buf, pStrLen)
 mkBindColTimestamp cstmt col mColSize = do
   hdbcTrace "mkBindCol: BindColTimestamp"
-  let bufLen = sizeOf (undefined :: StructTimestamp)
-  buf     <- malloc
-  pStrLen <- malloc
+  (bufLen, buf, pStrLen) <- mallocBuffer 1
   sqlBindCol cstmt col (#{const SQL_C_TYPE_TIMESTAMP}) (castPtr buf) (fromIntegral bufLen) pStrLen
   return (BindColTimestamp buf, pStrLen)
 mkBindColGetData col = do
