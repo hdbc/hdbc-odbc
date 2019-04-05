@@ -5,7 +5,6 @@
 module Database.HDBC.ODBC.Connection (connectODBC, Impl.Connection) where
 
 import Database.HDBC.Types
-import Database.HDBC
 import Database.HDBC.DriverUtils
 import qualified Database.HDBC.ODBC.ConnectionImpl as Impl
 import Database.HDBC.ODBC.Api.Imports
@@ -13,12 +12,9 @@ import Database.HDBC.ODBC.Api.Errors
 import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Statement
 import Database.HDBC.ODBC.Wrappers
-import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal hiding (void)
 import Foreign.Storable
-import Database.HDBC.ODBC.Utils
-import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
 import Data.Int

@@ -16,16 +16,12 @@ import Database.HDBC.DriverUtils
 import Database.HDBC.ODBC.Api.Errors
 import Database.HDBC.ODBC.Api.Imports
 import Database.HDBC.ODBC.Api.Types
-import Database.HDBC.ODBC.Utils
 import Database.HDBC.ODBC.Log
 import Database.HDBC.ODBC.TypeConv
 import Database.HDBC.ODBC.Wrappers
 
-import Foreign.C.String (castCUCharToChar)
 import Foreign.C.Types
-import Foreign.ForeignPtr
 import Foreign.Ptr
-import Control.Applicative
 import Control.Concurrent.MVar
 import Foreign.C.String
 import Foreign.Marshal
@@ -39,10 +35,6 @@ import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as BUTF8
 import qualified Data.ByteString.Unsafe as B
-import Unsafe.Coerce (unsafeCoerce)
-
-import System.IO (hPutStrLn, stderr)
-import Debug.Trace
 
 import qualified Data.Foldable as F
 

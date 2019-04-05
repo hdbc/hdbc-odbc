@@ -4,23 +4,8 @@
 module Database.HDBC.ODBC.TypeConv(fromOTypeInfo, fromOTypeCol) where
 import Database.HDBC.Types
 import Database.HDBC
-import Database.HDBC.DriverUtils
-import Database.HDBC.ODBC.Api.Types
-import Database.HDBC.ODBC.Utils
-import Foreign.C.Types
-import Foreign.ForeignPtr
-import Foreign.Ptr
-import Control.Concurrent.MVar
-import Foreign.C.String
-import Foreign.Marshal
-import Foreign.Storable
-import Control.Monad
-import Data.List
 import Data.Word
 import Data.Int
-import Control.Exception
-import System.IO
-import Data.Maybe
 
 l _ = return ()
 -- l m = hPutStrLn stderr ("\n" ++ m)
