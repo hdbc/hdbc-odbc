@@ -7,9 +7,6 @@ import Database.HDBC
 import Data.Word
 import Data.Int
 
-l _ = return ()
--- l m = hPutStrLn stderr ("\n" ++ m)
-
 #ifdef mingw32_HOST_OS
 #include <windows.h>
 #endif

@@ -966,11 +966,6 @@ ffinish sstate = do
     c_sqlFreeStmt hStmt sQL_RESET_PARAMS >>= checkError "fexecute c_sqlFreeStmt sQL_RESET_PARAMS" (StmtHandle hStmt)
   freeBoundCols sstate
 
-ffinalize :: SState -> IO ()
-ffinalize sstate = do
-  ffinish sstate
-  freeStmtIfNotAlready $ sstmt sstate
-
 foreign import #{CALLCONV} safe "sql.h SQLDescribeCol"
   sqlDescribeCol :: SQLHSTMT
                  -> #{type SQLSMALLINT} -- ^ Column number
