@@ -14,10 +14,10 @@ void *getSqlOvOdbc3(void) {
 }
 
 SQLRETURN simpleSqlTables(SQLHSTMT stmt) {
-  return SQLTables(stmt, NULL, 0, NULL, 0, "%", 1, "TABLE", 5);
+  return SQLTables(stmt, NULL, 0, NULL, 0, (SQLCHAR *)"%", 1, (SQLCHAR *)"TABLE", 5);
 }
 
 SQLRETURN simpleSqlColumns(SQLHSTMT stmt, SQLCHAR *tablename,
                            SQLSMALLINT tnlen) {
-  return SQLColumns(stmt, NULL, 0, NULL, 0, tablename, tnlen, "%", 1);
+  return SQLColumns(stmt, NULL, 0, NULL, 0, tablename, tnlen, (SQLCHAR *)"%", 1);
 }
