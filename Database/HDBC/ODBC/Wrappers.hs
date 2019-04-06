@@ -81,8 +81,9 @@ withEnvOrDie ew act = withMaybeEnv ew $ \maybeHandle ->
         }
 
 data DbcWrapper = DbcWrapper
-  { connHandle :: RWVar (Maybe SQLHDBC) -- ^ If there is Nothing here, connection is already freed
-  , connEnv    :: EnvWrapper
+  { connHandle   :: RWVar (Maybe SQLHDBC) -- ^ If there is Nothing here, connection is already freed
+  , connEnv      :: EnvWrapper
+  , connOldStmts :: MVar [SQLHSTMT] -- ^ Statements that are no longer used and need to be freed
   }
 
 -- This one implicitly allocates and initializes an environment.
@@ -94,11 +95,25 @@ sqlAllocDbc env = do
     peek pdbcptr
 
   handleVar <- RWV.new $ Just hDbc
-  let wrapper = DbcWrapper handleVar env
+  oldStmtsVar <- newMVar []
+  let wrapper = DbcWrapper handleVar env oldStmtsVar
 
   addFinalizer wrapper $ freeDbcIfNotAlready False wrapper
   return wrapper
 
+freeOldStmts :: DbcWrapper -> IO ()
+freeOldStmts dbc = RWV.with (connHandle dbc) $ \maybeConn ->
+  F.forM_ maybeConn $ \_ ->
+    modifyMVar_ (connOldStmts dbc) $ \stmts -> do
+      F.forM_ stmts $ \hStmt -> do
+        hdbcTrace $ "Freeing statement with handle " ++ show hStmt
+        -- SQL Server might deadlock if closing handle to a statement in process of fetching
+        -- network data so we have to cancel it explicitly. We also need to protect ourselves
+        -- from trying to cancel or free a statement, which has its connection already finalized.
+        void $ c_sqlCancel hStmt
+        void $ c_sqlCloseCursor hStmt
+        void $ c_sqlFreeHandle sQL_HANDLE_STMT (castPtr hStmt)
+      return []
 
 -- | Tries to perform disconnect and free resources used by connection. If SQLDisconnect call
 -- fails, an exception gets thrown and connection resources aren't freed.
@@ -107,6 +122,7 @@ tryDisconnectAndFree = freeDbcIfNotAlready True
 
 freeDbcIfNotAlready :: Bool -> DbcWrapper -> IO ()
 freeDbcIfNotAlready checkDisconnect dbc = do
+  freeOldStmts dbc
   RWV.modify_ (connHandle dbc) $ \maybeHandle -> do
     F.forM_ maybeHandle $ \hDbc -> do
       hdbcTrace $ "Freeing connection with handle " ++ show hDbc
@@ -138,6 +154,7 @@ data StmtWrapper = StmtWrapper
 
 sqlAllocStmt :: DbcWrapper -> IO StmtWrapper
 sqlAllocStmt dbc = do
+  freeOldStmts dbc
   hStmt <- withDbcOrDie dbc $ \hDbc -> alloca $ \(psthptr :: Ptr SQLHSTMT) -> do
     retVal <- c_sqlAllocHandle sQL_HANDLE_STMT (castPtr hDbc) (castPtr psthptr)
     checkError "sqlAllocStmt/SQLAllocHandle" (DbcHandle hDbc) retVal
@@ -151,16 +168,8 @@ sqlAllocStmt dbc = do
 
 freeStmtIfNotAlready :: StmtWrapper -> IO ()
 freeStmtIfNotAlready stmt = modifyMVar_ (stmtHandle stmt) $ \maybeHandle -> do
-  F.forM_ maybeHandle $ \hStmt -> do
-    hdbcTrace $ "Freeing statement with handle " ++ show hStmt
-    -- SQL Server might deadlock if closing handle to a statement in process of fetching
-    -- network data so we have to cancel it explicitly. We also need to protect ourselves
-    -- from trying to cancel or free a statement, which has its connection already finalized.
-    RWV.with (connHandle $ stmtConn stmt) $ \maybeConn ->
-      F.forM_ maybeConn $ \_ -> do
-        void $ c_sqlCancel hStmt
-        void $ c_sqlCloseCursor hStmt
-        void $ c_sqlFreeHandle sQL_HANDLE_STMT (castPtr hStmt)
+  F.forM_ maybeHandle $ \hStmt ->
+    modifyMVar_ (connOldStmts $ stmtConn stmt) $ return . (hStmt :)
   return Nothing
 
 withMaybeStmt :: StmtWrapper -> (Maybe SQLHSTMT -> IO a) -> IO a
