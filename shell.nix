@@ -15,5 +15,6 @@ nixpkgs.stdenv.mkDerivation {
   name = "hie-env";
   buildInputs =
     [ nixpkgs.stack nixpkgs.zlib.dev nixpkgs.zlib.out hie.hies
+      nixpkgs.cabal-install
     ];
 }
