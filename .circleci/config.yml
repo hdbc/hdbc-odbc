@@ -1,0 +1,41 @@
+common: &common
+  docker:
+    - image: fpco/stack-build:lts-${STACKAGE_LTS}
+  steps:
+    - checkout
+    - run:
+        name: Install unixodbc-dev
+        command: apt-get update && apt-get install -y unixodbc-dev
+    - run:
+        name: Stack build
+        # We use system GHC because fpco/stack-build image already contains proper GHC
+        # for given LTS snapshot
+        command: stack -j 2 --system-ghc --stack-yaml=stack-lts-${STACKAGE_LTS}.yaml build
+
+version: 2
+jobs:
+  lts-6:
+    environment:
+      - STACKAGE_LTS: "6"
+    <<: *common
+  lts-9:
+    environment:
+      - STACKAGE_LTS: "9"
+    <<: *common
+  lts-11:
+    environment:
+      - STACKAGE_LTS: "11"
+    <<: *common
+  lts-13:
+    environment:
+      - STACKAGE_LTS: "13"
+    <<: *common
+
+workflows:
+  version: 2
+  multiple-lts:
+    jobs:
+      - lts-6
+      - lts-9
+      - lts-11
+      - lts-13

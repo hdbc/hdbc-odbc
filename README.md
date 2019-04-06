@@ -1,6 +1,8 @@
 HDBC-ODBC
 =========
 
+[![CircleCI](https://circleci.com/gh/hdbc/hdbc-odbc/tree/master.svg?style=svg)](https://circleci.com/gh/hdbc/hdbc-odbc/tree/master)
+
 Welcome to HDBC, Haskell Database Connectivity.
 
 This package provides a database backend driver for ODBC.  You should
