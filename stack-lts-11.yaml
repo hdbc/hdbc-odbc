@@ -1,0 +1,6 @@
+resolver: lts-11.22
+allow-newer: true
+extra-deps:
+  - HDBC-2.4.0.1
+nix:
+  packages: [ unixODBC ]

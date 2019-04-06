@@ -1,0 +1,6 @@
+resolver: lts-9.21
+extra-deps:
+  - HDBC-2.4.0.1
+  - concurrent-extra-0.7.0.12@sha256:f9a9c09770dbe32eeb3c741ef6c4e0b3389a203cd46eeb4c696b11ee66f01423
+nix:
+  packages: [ unixODBC ]
