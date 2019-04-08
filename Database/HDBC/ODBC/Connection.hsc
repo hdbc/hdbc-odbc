@@ -5,7 +5,6 @@
 module Database.HDBC.ODBC.Connection (connectODBC, Impl.Connection) where
 
 import Database.HDBC.Types
-import Database.HDBC
 import Database.HDBC.DriverUtils
 import qualified Database.HDBC.ODBC.ConnectionImpl as Impl
 import Database.HDBC.ODBC.Api.Imports
@@ -13,12 +12,9 @@ import Database.HDBC.ODBC.Api.Errors
 import Database.HDBC.ODBC.Api.Types
 import Database.HDBC.ODBC.Statement
 import Database.HDBC.ODBC.Wrappers
-import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Marshal hiding (void)
 import Foreign.Storable
-import Database.HDBC.ODBC.Utils
-import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
 import Data.Int
@@ -79,7 +75,7 @@ connectODBC args =
   -- Create the Environment Handle
   env <- sqlAllocEnv
   withEnvOrDie env $ \hEnv ->
-    sqlSetEnvAttr hEnv #{const SQL_ATTR_ODBC_VERSION} (getSqlOvOdbc3) 0
+    void $ sqlSetEnvAttr hEnv #{const SQL_ATTR_ODBC_VERSION} (getSqlOvOdbc3) 0
 
   -- Create the DBC handle.
   dbc <- sqlAllocDbc env
@@ -151,20 +147,24 @@ mkConn args iconn = withDbcOrDie iconn $ \cconn ->
 -- Guts here
 --------------------------------------------------
 
+frun :: DbcWrapper -> ChildList -> String -> [SqlValue] -> IO Integer
 frun conn children query args =
     do sth <- newSth conn children query
        res <- execute sth args
        finish sth
        return res
 
+fcommit :: DbcWrapper -> IO ()
 fcommit iconn = withDbcOrDie iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_COMMIT}
     >>= checkError "sqlEndTran commit" (DbcHandle cconn)
 
+frollback :: DbcWrapper -> IO ()
 frollback iconn = withDbcOrDie iconn $ \cconn ->
     sqlEndTran #{const SQL_HANDLE_DBC} cconn #{const SQL_ROLLBACK}
     >>= checkError "sqlEndTran rollback" (DbcHandle cconn)
 
+fdisconnect :: DbcWrapper -> ChildList -> IO ()
 fdisconnect iconn mchildren  = do
   closeAllChildren mchildren
   freeDbcIfNotAlready True iconn

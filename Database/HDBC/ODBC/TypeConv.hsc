@@ -4,26 +4,8 @@
 module Database.HDBC.ODBC.TypeConv(fromOTypeInfo, fromOTypeCol) where
 import Database.HDBC.Types
 import Database.HDBC
-import Database.HDBC.DriverUtils
-import Database.HDBC.ODBC.Api.Types
-import Database.HDBC.ODBC.Utils
-import Foreign.C.Types
-import Foreign.ForeignPtr
-import Foreign.Ptr
-import Control.Concurrent.MVar
-import Foreign.C.String
-import Foreign.Marshal
-import Foreign.Storable
-import Control.Monad
-import Data.List
 import Data.Word
 import Data.Int
-import Control.Exception
-import System.IO
-import Data.Maybe
-
-l _ = return ()
--- l m = hPutStrLn stderr ("\n" ++ m)
 
 #ifdef mingw32_HOST_OS
 #include <windows.h>
@@ -50,7 +32,8 @@ fromOTypeInfo colname datatype colsize nullable =
                 }
     )
 
-fromOTypeCol (_:_:_:colname:datatype:_:colsize:buflen:decdig:precrad:nullable:_:_:_:subtype:octetlen:_) =
+fromOTypeCol :: [SqlValue] -> (String, SqlColDesc)
+fromOTypeCol (_:_:_:colname:datatype:_:colsize:_:_:_:nullable:_:_:_:_:_:_) =
     fromOTypeInfo (fromSql colname)
                   (fromIntegral ((fromSql datatype)::Int))
                   (fromSql colsize)
