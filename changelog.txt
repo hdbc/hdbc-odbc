@@ -1,3 +1,23 @@
+2.6.0.0 - 8 Apr 2019
+
+  * Only use Unicode API for getting diagnostic messages when on Windows,
+    switched to non-Unicode API on other OS.
+
+2.5.1.1 - 6 Apr 2019
+
+  * Support for fetching errors from compound statements
+  * Fix segfault when statement gets finalized by GC during execution of another
+    one on same connection.
+
+2.5.0.1 - 24 Nov 2016
+
+  * Haddock fixes and documentation updates.
+
+2.5.0.0 - 9 Dec 2015
+
+  * Support for Unicode diagnostic messages on Windows.
+  * Added support for getting and setting AutoCommit flag.
+
 2.4.0.1 - 15 May 2015
 
   * Switched to using UTF-8 encoding for binding WCHAR_T values on Linux. Earlier version tried

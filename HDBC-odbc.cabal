@@ -1,5 +1,5 @@
 name:          HDBC-odbc
-version:       2.5.1.1
+version:       2.6.0.0
 cabal-version: >=1.8
 build-type:    Simple
 license:       BSD3
