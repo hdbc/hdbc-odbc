@@ -168,6 +168,7 @@ fdisconnect :: DbcWrapper -> ChildList -> IO ()
 fdisconnect iconn mchildren  = do
   closeAllChildren mchildren
   freeDbcIfNotAlready True iconn
+{-# NOINLINE fdisconnect #-}
 
 fGetAutoCommit :: SQLHDBC -> IO Bool
 fGetAutoCommit hdbc = do
