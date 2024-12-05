@@ -55,7 +55,7 @@ sqlAllocEnv = do
     handleVar <- newMVar (Just hEnv)
     let wrapper = EnvWrapper handleVar
 
-    addFinalizer wrapper $ freeEnvIfNotAlready wrapper
+    mkWeakMVar handleVar $ freeEnvIfNotAlready wrapper
     return wrapper
 
 freeEnvIfNotAlready :: EnvWrapper -> IO ()
@@ -98,7 +98,7 @@ sqlAllocDbc env = do
   oldStmtsVar <- newMVar []
   let wrapper = DbcWrapper handleVar env oldStmtsVar
 
-  addFinalizer wrapper $ freeDbcIfNotAlready False wrapper
+  mkWeakMVar oldStmtsVar $ freeDbcIfNotAlready False wrapper
   return wrapper
 
 freeOldStmts :: DbcWrapper -> IO ()
@@ -163,7 +163,7 @@ sqlAllocStmt dbc = do
   handleVar <- newMVar $ Just hStmt
   let wrapper = StmtWrapper handleVar dbc
 
-  addFinalizer wrapper $ freeStmtIfNotAlready wrapper
+  mkWeakMVar handleVar $ freeStmtIfNotAlready wrapper
   return wrapper
 
 freeStmtIfNotAlready :: StmtWrapper -> IO ()
